@@ -1,0 +1,15 @@
+# Netlify serves the static frontend and proxies /api/* to the Railway backend (same-origin, no CORS).
+[build]
+  publish = "static"
+  command = ""
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://RAILWAY_BACKEND_DOMAIN/api/:splat"
+  status = 200
+  force = true
+
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
