@@ -45,7 +45,33 @@ function busy(on, label = "SIMULATING") {
   } else if (busyEl) { busyEl.remove(); busyEl = null; }
 }
 
+// ---- optimistic sync: the caller has ALREADY applied the change to S.L and re-rendered.
+// Requests go out in order in the background; the reply is tiny. On failure we resync from the server.
+let bgChain = Promise.resolve();
+export function sync(type, payload = {}) {
+  bgChain = bgChain
+    .then(() => api(`s/${S.sid}/act`, { type, ...payload, lite: true }))
+    .catch(async (e) => {
+      toast(e.message, true);
+      try { await loadState(); hooks.render(); } catch (_) { /* offline */ }
+    });
+  return bgChain;
+}
+// Server decides the outcome, but only a small result comes back (caller patches S.L itself).
+export async function actLite(type, payload = {}) {
+  await bgChain;
+  const r = await api(`s/${S.sid}/act`, { type, ...payload, lite: true });
+  return r.result;
+}
+// Read-only server question (no state comes back, nothing is saved).
+export async function query(type, payload = {}) {
+  await bgChain;
+  const r = await api(`s/${S.sid}/act`, { type, ...payload });
+  return r.result;
+}
+
 export async function act(type, payload = {}, { quiet = false, label, rerender = true } = {}) {
+  await bgChain;   // never race a pending background save
   const t = setTimeout(() => busy(true, label), 180);
   try {
     const r = await api(`s/${S.sid}/act`, { type, ...payload });

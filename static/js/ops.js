@@ -1,6 +1,6 @@
 // Front-office pages: draft room, trade center + trade block, free agency, offseason HQ.
 import * as U from "./ui.js";
-import { S, ACT, SEG, act, hooks, T, Pl, me, roster } from "./state.js";
+import { S, ACT, SEG, act, sync, query, hooks, T, Pl, me, roster } from "./state.js";
 import { awardsSlab } from "./views.js";
 
 const render = () => hooks.render();
@@ -110,10 +110,10 @@ function tradeSummary() {
     <div class="grid g3" style="gap:8px"><div><div class="label">Out</div><div class="mono">${U.money(out)}</div></div><div><div class="label">In</div><div class="mono">${U.money(inn)}</div></div><div><div class="label">Payroll after</div><div class="mono ${after > L.consts.cap ? "warn" : ""}">${U.money(after)}</div></div></div>
     <div><div class="row"><span class="label">${U.esc(T(tid).abbr)} front office</span><span class="sp"></span>${ev ? `<span class="chip">${ev.mode}</span>` : ""}</div>
       <div class="meter" style="margin-top:8px"><i style="width:${meter * 100}%;background:${color}"></i><span class="mark"></span></div>
-      <div style="margin-top:10px;font-weight:600;color:${ev ? color : "var(--dim)"}">${ev ? U.esc(ev.msg) : "Select assets to get a read from their front office."}</div>
+      <div style="margin-top:10px;font-weight:600;color:${ev && !ev.pending ? color : "var(--dim)"}">${ev?.pending ? "Their front office is thinking…" : ev ? U.esc(ev.msg) : "Select assets to get a read from their front office."}</div>
       ${ev?.ask ? `<div class="dim" style="margin-top:6px;font-size:12px">They'd probably do it if you add <b class="acc" style="cursor:pointer" data-act="trade-add-ask" data-kind="${ev.ask.type === "player" ? "players" : "picks"}" data-id="${ev.ask.id}">${U.esc(ev.ask.label)}</b>.</div>` : ""}
     </div>
-    <button class="btn pri lg" data-act="trade-propose" ${ev && !ev.problems?.length ? "" : "disabled"}>Propose trade</button>
+    <button class="btn pri lg" data-act="trade-propose" ${ev && !ev.pending && !ev.problems?.length ? "" : "disabled"}>Propose trade</button>
     <button class="btn ghost sm" data-act="trade-clear">Clear</button>
   </div>`;
 }
@@ -160,14 +160,23 @@ function tradeBlock() {
   </div>`;
 }
 
-async function evalTrade() {
+// Selections render instantly; the AI's verdict is fetched in the background (debounced, stale replies dropped).
+let evalSeq = 0, evalTimer = null;
+function evalTrade() {
   const g = S.ui.give, r = S.ui.get;
+  clearTimeout(evalTimer);
   if (!g.players.length && !g.picks.length && !r.players.length && !r.picks.length) { S.ui.tradeEval = null; render(); return; }
-  try {
-    const res = await act("trade_eval", { tid: S.ui.tradeTid, give: g, get: r }, { rerender: false, quiet: true });
-    S.ui.tradeEval = res.eval;
-  } catch (e) { S.ui.tradeEval = { msg: e.message, meter: 0, problems: [e.message] }; }
+  S.ui.tradeEval = { ...(S.ui.tradeEval || { meter: 0 }), pending: true };
   render();
+  const seq = ++evalSeq;
+  evalTimer = setTimeout(async () => {
+    let ev;
+    try { ev = (await query("trade_eval", { tid: S.ui.tradeTid, give: g, get: r })).eval; }
+    catch (e) { ev = { msg: e.message, meter: 0, problems: [e.message] }; }
+    if (seq !== evalSeq) return;   // a newer selection superseded this one
+    S.ui.tradeEval = ev;
+    render();
+  }, 160);
 }
 ACT["trade-tab"] = (el) => { S.ui.tradeTab = el.dataset.t; render(); };
 ACT["trade-team"] = (el) => { S.ui.tradeTid = +el.dataset.tid; S.ui.get = { players: [], picks: [] }; evalTrade(); };
@@ -199,7 +208,10 @@ ACT["block-toggle"] = (el) => {
   const b = { players: [...S.L.block.players], picks: [...S.L.block.picks] };
   const k = el.dataset.kind, id = k === "players" ? +el.dataset.id : el.dataset.id;
   b[k] = b[k].includes(id) ? b[k].filter((x) => x !== id) : [...b[k], id];
-  act("block_set", b, { label: "SAVING" });
+  S.L.block = b;                     // instant
+  S.L.offers = [];
+  render();
+  sync("block_set", b);
 };
 ACT["block-offers"] = async () => {
   const r = await act("block_offers", {}, { label: "CALLING AROUND THE LEAGUE" });

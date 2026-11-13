@@ -22,7 +22,7 @@ def act(sid, t, **kw):
     if "error" in r:
         print("  !", t, r["error"])
         return None, None
-    return r["result"], r["state"]
+    return r["result"], r.get("state")
 
 
 mode = sys.argv[1] if len(sys.argv) > 1 else "classic"

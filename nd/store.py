@@ -93,6 +93,37 @@ class Store:
         self.kind = self.db.kind
         self.lock = threading.RLock()
         self.cache = OrderedDict()   # sid -> (owner, league)
+        # write-behind: league saves are serialized immediately, written to the DB by a background thread
+        self.pending = {}            # sid -> (meta tuple, json text)
+        self.wake = threading.Condition()
+        threading.Thread(target=self._writer, daemon=True).start()
+
+    def _writer(self):
+        while True:
+            with self.wake:
+                while not self.pending:
+                    self.wake.wait()
+            self.flush()
+
+    def flush(self):
+        """Write every queued league save now (also called on shutdown)."""
+        while True:
+            with self.wake:
+                if not self.pending:
+                    return
+                sid, (meta, text) = next(iter(self.pending.items()))
+            try:
+                with self.lock:
+                    self.db.run("UPDATE saves SET name=?, team=?, season=?, phase=?, record=?, updated=?, data=? "
+                                "WHERE id=?", (*meta, text, int(sid)))
+            except Exception as e:  # noqa — keep it queued and retry shortly
+                print("save failed, retrying:", e, flush=True)
+                time.sleep(1.0)
+                continue
+            with self.wake:
+                # only drop it if nothing newer was queued while we were writing
+                if self.pending.get(sid, (None, None))[1] is text:
+                    del self.pending[sid]
 
     # ---------------------------------------------------------------- helpers
     def _meta(self, L):
@@ -113,6 +144,7 @@ class Store:
 
     # ---------------------------------------------------------------- saves
     def list_saves(self, owner):
+        self.flush()   # so the list shows current records
         with self.lock:
             rows = self.db.run("SELECT id, name, team, season, phase, record, updated FROM saves "
                                "WHERE owner = ? OR owner IS NULL ORDER BY updated DESC", (owner,), fetch="all")
@@ -140,14 +172,18 @@ class Store:
             row = self.db.run("SELECT data, owner FROM saves WHERE id = ?", (sid,), fetch="one")
             if not row or not self._allowed(row[1], owner):
                 return None
-            L = json.loads(row[0])
+            with self.wake:
+                queued = self.pending.get(sid)
+            L = json.loads(queued[1] if queued else row[0])   # never read a stale row over a queued save
             self._remember(sid, row[1], L)
             return L
 
     def save(self, sid, L):
-        with self.lock:
-            self.db.run("UPDATE saves SET name=?, team=?, season=?, phase=?, record=?, updated=?, data=? "
-                        "WHERE id=?", (*self._meta(L), json.dumps(L), int(sid)))
+        """Snapshot now, write in the background (the request doesn't wait on the database)."""
+        item = (self._meta(L), json.dumps(L))
+        with self.wake:
+            self.pending[int(sid)] = item
+            self.wake.notify()
 
     def delete(self, sid, owner):
         sid = int(sid)
@@ -155,6 +191,8 @@ class Store:
             row = self.db.run("SELECT owner FROM saves WHERE id = ?", (sid,), fetch="one")
             if not row or not self._allowed(row[0], owner):
                 return False
+            with self.wake:
+                self.pending.pop(sid, None)
             self.db.run("DELETE FROM saves WHERE id = ?", (sid,))
             self.db.run("DELETE FROM games WHERE save_id = ?", (sid,))
             self.cache.pop(sid, None)

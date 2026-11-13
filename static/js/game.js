@@ -219,6 +219,11 @@ function liveLoop(now) {
     paint(applied);
     if (applied) renderClipboard();
   }
+  // prefetch: ask for the next chunk while ~20 game-seconds are still buffered, so playback never stalls
+  // on the network. Paused while a coaching call is queued (it must land at the next dead ball).
+  if (!G.fetching && !G.modal && !G.paused && !G.pending && !G.finalPayload && !G.queue.length && G.endEl - G.el < 20) {
+    fetchChunk();
+  }
   const drained = G.idx >= G.doc.events.length && G.el >= G.endEl;
   if (drained && !G.fetching && !G.modal && !G.paused) {
     if (G.queue.length) runQueue();

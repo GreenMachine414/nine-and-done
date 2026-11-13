@@ -1,6 +1,6 @@
 // Franchise upgrades, All-Star Weekend (with a playable 3-point contest), rivalry boards.
 import * as U from "./ui.js";
-import { S, ACT, act, hooks, T, Pl, me } from "./state.js";
+import { S, ACT, act, sync, hooks, T, Pl, me } from "./state.js";
 
 const render = () => hooks.render();
 const head = (kicker, title, sub = "", right = "") => `<div class="view-head"><div><div class="kicker">${kicker}</div><h1>${title}</h1>${sub ? `<div class="sub">${sub}</div>` : ""}</div><div class="right">${right}</div></div>`;
@@ -41,7 +41,16 @@ function franchise() {
       ${league.map((tm) => `<tr class="${tm.tid === L.user ? "me" : ""}"><td class="l">${U.tlink(tm, 18)}</td>${keys.map((k) => `<td class="c">${tm.upg?.[k] || 0}</td>`).join("")}<td class="hl">${Object.values(tm.upg || {}).reduce((x, y) => x + y, 0)}</td></tr>`).join("")}
     </tbody></table></div><div class="dim" style="font-size:12px;margin-top:8px">AI teams earn and spend FP too. Arena, Analytics and Player Development edges are measured against the league average, so keeping up matters.</div>`)}`;
 }
-ACT["buy-upg"] = (el) => act("upgrade", { key: el.dataset.k }, { label: "BUILDING" }).then(() => U.toast("Upgrade complete!"));
+ACT["buy-upg"] = (el) => {
+  const k = el.dataset.k, t = me();
+  const lv = t.upg?.[k] || 0, cost = S.L.consts.cost[lv];
+  if (lv >= 5 || (t.fp || 0) < cost) return;
+  t.fp -= cost;                      // instant
+  t.upg = { ...(t.upg || {}), [k]: lv + 1 };
+  render();
+  U.toast("Upgrade complete!");
+  sync("upgrade", { key: k });
+};
 
 // ================================================================== ALL-STAR
 function nameOf(pid) {

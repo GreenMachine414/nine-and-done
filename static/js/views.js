@@ -1,6 +1,6 @@
 // Core pages: hub, roster/lineup/strategy, schedule, standings, stats, playoffs, league, team, history.
 import * as U from "./ui.js";
-import { S, ACT, SEG, act, hooks, T, Pl, me, roster, lineupOf, seasonKey, recordStr, nextGame } from "./state.js";
+import { S, ACT, SEG, act, sync, hooks, T, Pl, me, roster, lineupOf, seasonKey, recordStr, nextGame } from "./state.js";
 import { rivalryList, rivalryBadge } from "./extras.js";
 
 const go = (h) => { location.hash = h; };
@@ -171,7 +171,38 @@ const STRAT = [
   ["defense", "Defense", [["conservative", "Contain"], ["normal", "Normal"], ["aggressive", "Gamble"]], "Gambling forces more steals and turnovers, but gives up more fouls and open threes."],
   ["rotation", "Rotation", [["tight", "8-man"], ["standard", "10-man"], ["deep", "11-man"]], "How deep the coach goes into the bench. A tight rotation tires out your starters."],
 ];
-for (const [k] of STRAT) SEG[`strat-${k}`] = (v) => act("set_strategy", { strategy: { [k]: v } }, { label: "SAVING" });
+for (const [k] of STRAT) {
+  SEG[`strat-${k}`] = (v) => {
+    me().strategy[k] = v;            // instant
+    render();
+    sync("set_strategy", { strategy: { [k]: v } });
+  };
+}
+function setLineup(ids) {
+  me().lineup = ids;                 // instant
+  render();
+  sync("set_lineup", { order: ids });
+}
+const POS_ORDER = ["PG", "SG", "SF", "PF", "C"];
+function autoLineupLocal(tid) {      // mirrors league.auto_lineup on the server
+  const hurt = (p) => (p.inj?.games || 0) > 0;
+  const ps = roster(tid).sort((a, b) => (b.ovr - (hurt(b) ? 6 : 0)) - (a.ovr - (hurt(a) ? 6 : 0)));
+  const healthy = ps.filter((p) => !hurt(p));
+  const st = [];
+  for (const p of healthy) {
+    if (st.length === 5) break;
+    const c = [...st, p];
+    const g = c.filter((x) => x.pos === "PG" || x.pos === "SG").length;
+    const b = c.filter((x) => x.pos === "PF" || x.pos === "C").length;
+    if (g > 3 || b > 3 || c.filter((x) => x.pos === "C").length > 2) continue;
+    const rem = 5 - c.length;
+    if ((g === 0 && b === 0 && rem < 2) || ((g === 0 || b === 0) && rem < 1)) continue;
+    st.push(p);
+  }
+  for (const p of healthy) { if (st.length === 5) break; if (!st.includes(p)) st.push(p); }
+  st.sort((a, b) => POS_ORDER.indexOf(a.pos) - POS_ORDER.indexOf(b.pos));
+  return [...st, ...ps.filter((p) => !st.includes(p))].map((p) => p.id);
+}
 
 function strategyPanel() {
   const st = me().strategy;
@@ -247,18 +278,21 @@ function rosterView() {
     `<div class="tabs">${tabs.map(([k, l]) => `<button class="${tab === k ? "on" : ""}" data-act="roster-tab" data-t="${k}">${l}</button>`).join("")}</div>` + body;
 }
 ACT["roster-tab"] = (el) => { S.ui.rosterTab = el.dataset.t; render(); };
-ACT["auto-lineup"] = () => act("auto_lineup", {}, { label: "SAVING" });
+ACT["auto-lineup"] = () => setLineup(autoLineupLocal(S.L.user));
 ACT["lu-move"] = (el) => {
   const ids = lineupOf(S.L.user).map((p) => p.id);
   const i = ids.indexOf(+el.dataset.pid), j = i + +el.dataset.d;
   if (j < 0 || j >= ids.length) return;
   [ids[i], ids[j]] = [ids[j], ids[i]];
-  act("set_lineup", { order: ids }, { label: "SAVING" });
+  setLineup(ids);
 };
 ACT["toggle-block"] = (el) => {
   const b = S.L.block, pid = +el.dataset.pid;
   const players = b.players.includes(pid) ? b.players.filter((x) => x !== pid) : [...b.players, pid];
-  act("block_set", { players, picks: b.picks }, { label: "SAVING" });
+  S.L.block = { players, picks: b.picks };
+  S.L.offers = [];
+  render();
+  sync("block_set", S.L.block);
 };
 ACT["release"] = (el) => {
   const p = Pl(el.dataset.pid);
@@ -283,7 +317,7 @@ function rosterMount() {
       if (dragId === null || dragId === target) return;
       ids.splice(ids.indexOf(dragId), 1);
       ids.splice(ids.indexOf(target), 0, dragId);
-      act("set_lineup", { order: ids }, { label: "SAVING" });
+      setLineup(ids);
     });
   });
 }

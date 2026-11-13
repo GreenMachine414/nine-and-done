@@ -1,6 +1,7 @@
 """Nine & Done — local web server.  Run:  python server.py  (then open http://127.0.0.1:8777)"""
 import json
 import re
+import signal
 import mimetypes
 import os
 import random
@@ -22,6 +23,7 @@ HOSTED = bool(os.environ.get("PORT") or os.environ.get("RAILWAY_ENVIRONMENT"))
 HOST = os.environ.get("HOST") or ("0.0.0.0" if HOSTED else "127.0.0.1")
 store = Store(os.path.join(ROOT, "data", "ninedone.db"), os.environ.get("DATABASE_URL"))
 OWNER_OK = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+READ_ONLY = {"trade_eval"}
 LOCK = threading.RLock()
 mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
@@ -385,6 +387,8 @@ class H(BaseHTTPRequestHandler):
                 b = self.body()
                 if L.get("live") and b.get("type") != "rename":
                     raise LG.GameError("You have a live game in progress. Finish it (or sim the rest) first.")
+                if b.get("type") in READ_ONLY:
+                    return self.send_json({"result": act(sid, L, b)})
                 snapshot = json.dumps(L)
                 try:
                     res = act(sid, L, b)
@@ -393,7 +397,9 @@ class H(BaseHTTPRequestHandler):
                     L.clear()
                     L.update(json.loads(snapshot))
                     raise
-                store.save(sid, L)
+                store.save(sid, L)   # queued; written to the DB in the background
+                if b.get("lite"):     # optimistic client: it already applied the change itself
+                    return self.send_json({"result": res, "ok": True})
                 return self.send_json({"result": res, "state": view(L)})
         return self.send_json({"error": "not found"}, 404)
 
@@ -413,10 +419,14 @@ def main():
     print(f"Nine & Done running on {HOST}:{PORT} ({store.kind})  (Ctrl+C to stop)", flush=True)
     if "--no-browser" not in sys.argv and not HOSTED:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
+    def stop(*_):
+        store.flush()     # never lose a queued save on redeploy / Ctrl+C
+        os._exit(0)
+    signal.signal(signal.SIGTERM, stop)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
-        pass
+        stop()
 
 
 if __name__ == "__main__":

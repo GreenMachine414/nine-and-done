@@ -1,6 +1,6 @@
 // Player card modal: identity, ratings vs positional ceilings, tendencies, stats history, actions.
 import * as U from "./ui.js";
-import { S, ACT, act, T, Pl } from "./state.js";
+import { S, ACT, act, actLite, query, hooks, T, Pl } from "./state.js";
 import { modal, closeModal } from "./app.js";
 
 const GROUPS = [["Scoring", ["ins", "mid", "three", "ft", "post"]], ["Playmaking", ["pass", "hand", "iq"]], ["Defense", ["perd", "intd", "stl", "blk"]], ["Physical", ["reb", "ath", "sta"]]];
@@ -96,12 +96,19 @@ export function openPlayer(pid) {
 
 ACT["talk"] = async (el) => {
   const pid = +el.dataset.pid;
+  el.parentElement.querySelectorAll("button").forEach((b) => (b.disabled = true));
   try {
-    const r = await act("talk", { pid, approach: el.dataset.a }, { label: "TALKING" });
-    const t = r.talk;
+    const t = (await actLite("talk", { pid, approach: el.dataset.a })).talk;
+    const p = Pl(pid);
+    p.morale = t.morale;
+    p.mlog = [...(p.mlog || []), { t: `talk: ${el.dataset.a}`, d: t.delta }].slice(-6);
+    hooks.render();
     U.toast(`${t.txt} (${t.delta > 0 ? "+" : ""}${t.delta} mood)`, t.quality === "bad");
     openPlayer(pid);
-  } catch (e) { /* toast already shown */ }
+  } catch (e) {
+    U.toast(e.message, true);
+    el.parentElement.querySelectorAll("button").forEach((b) => (b.disabled = false));
+  }
 };
 
 ACT["trade-for"] = (el) => {
@@ -113,5 +120,6 @@ ACT["trade-for"] = (el) => {
   S.ui.tradeEval = null;
   closeModal();
   location.hash = "#/trade";
-  setTimeout(() => document.querySelector(`[data-act="trade-toggle"][data-side="get"]`) && act("trade_eval", { tid: S.ui.tradeTid, give: S.ui.give, get: S.ui.get }, { rerender: false, quiet: true }).then((r) => { S.ui.tradeEval = r.eval; import("./state.js").then((m) => m.hooks.render()); }).catch(() => {}), 50);
+  query("trade_eval", { tid: S.ui.tradeTid, give: S.ui.give, get: S.ui.get })
+    .then((r) => { S.ui.tradeEval = r.eval; hooks.render(); }).catch(() => {});
 };
