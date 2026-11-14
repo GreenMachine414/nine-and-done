@@ -59,8 +59,8 @@ VALID_TEAM_COUNTS = [10, 12, 14, 16, 18, 20]
 
 
 def playoff_size(n_teams):
-    """4-team field for small leagues, 8-team field from 14 teams up."""
-    return 4 if n_teams <= 12 else 8
+    """Every league sends 4 teams to the playoffs."""
+    return 4
 
 FIRST_NAMES = """Aaron Abdul Ade Adrian Ahmad Aiden Akira Alonzo Amari Andre Anton Ari Armand Augustin Bakari Bastian
 Beau Benedikt Bodhi Bram Brennan Caleb Callum Cam Cassius Cedric Chidi Cole Corbin Cruz Dalen Damari Dante Darius Davi

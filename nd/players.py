@@ -133,17 +133,15 @@ def undisp(d):
     return 100.0
 
 
+# Players are shown only as 1-5 stars in half-star steps, on the original rating scale.
+STAR_STEPS = [(85, 5.0), (80, 4.5), (75, 4.0), (70, 3.5), (65, 3.0), (60, 2.5), (55, 2.0), (50, 1.5)]
+
+
 def stars_for(ovr):
-    d = disp(ovr)
-    if d >= 88:
-        return 5
-    if d >= 80:
-        return 4
-    if d >= 73:
-        return 3
-    if d >= 66:
-        return 2
-    return 1
+    for cut, st in STAR_STEPS:
+        if ovr >= cut:
+            return st
+    return 1.0
 
 
 def market_salary(ovr, age):
@@ -294,8 +292,8 @@ def scout_report(p, step, scouting=0):
     wp = [10.0, 8.0, 6.0, 4.0, 2.0][step] * shrink
     lo_o = p["ovr"] - f_o * 2 * wo
     lo_p = p["pot"] - f_p * 2 * wp
-    ovr = [disp(lo_o), disp(lo_o + 2 * wo)]
-    pot = [max(ovr[0], disp(lo_p)), min(99, max(ovr[1], disp(lo_p + 2 * wp)))]
+    ovr = [stars_for(lo_o), stars_for(lo_o + 2 * wo)]
+    pot = [max(ovr[0], stars_for(lo_p)), max(ovr[1], stars_for(lo_p + 2 * wp))]
     return {"step": step, "max": SCOUT_MAX_STEP, "known": known, "ovr": ovr, "pot": pot,
             "tags": p["tags"] if step >= 2 else []}
 

@@ -10,9 +10,9 @@ EDGE = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 OUT = os.path.join(os.path.dirname(__file__), "shots")
 os.makedirs(OUT, exist_ok=True)
 sid = sys.argv[1]
-w, h = 1500, 1000
+w, h = map(int, os.environ.get("ND_SIZE", "1500,1000").split(","))
 for route in sys.argv[2:]:
-    name = route.replace("/", "_").replace("?", "_").replace("=", "") or "landing"
+    name = (os.environ.get("ND_PREFIX", "") + (route.replace("/", "_").replace("?", "_").replace("=", "") or "landing"))
     path = os.path.join(OUT, f"{name}.png")
     owner = os.environ.get("ND_OWNER", "")
     oq = f"&owner={owner}" if owner else ""

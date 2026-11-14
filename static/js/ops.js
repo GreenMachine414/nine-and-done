@@ -25,7 +25,7 @@ function prospectsTable(pool, canPick, fantasy) {
     return (p.tags || []).slice(0, 1).map((t) => `<span class="chip volt">${t}</span>`).join(" ") + " " + known.map(([k, v]) => `<span class="chip">${SHORT[k]} ${v}</span>`).join(" ");
   };
   return `<div class="row wrap" style="margin-bottom:12px">${U.seg("draft-pos", posF, [["ALL", "All"], ["PG", "PG"], ["SG", "SG"], ["SF", "SF"], ["PF", "PF"], ["C", "C"]])}<span class="sp"></span><span class="label">${list.length} available</span></div>
-  <div class="tbl-wrap" style="max-height:640px;overflow:auto"><table class="tbl"><thead><tr>${th("rank", "#")}${canPick ? "<th></th>" : ""}<th class="l">Prospect</th><th class="c">Pos</th>${th("age", "Age")}${th("ovr", "OVR")}${th("pot", "POT")}${fantasy ? "" : th("scout", "Scouted")}<th class="l">Known strengths</th>${fantasy ? "<th>Salary</th>" : "<th></th>"}</tr></thead><tbody>
+  <div class="tbl-wrap" style="max-height:640px;overflow:auto"><table class="tbl"><thead><tr>${th("rank", "#")}${canPick ? "<th></th>" : ""}<th class="l">Prospect</th><th class="c">Pos</th>${th("age", "Age")}${th("ovr", "Rating")}${th("pot", "POT")}${fantasy ? "" : th("scout", "Scouted")}<th class="l">Known strengths</th>${fantasy ? "<th>Salary</th>" : "<th></th>"}</tr></thead><tbody>
     ${list.slice(0, 140).map((p, i) => {
       const sc = p.scout;
       const scoutCell = fantasy ? "" : `<td class="c">${sc ? `${U.pips(sc.step, sc.max)}<div class="label">${Object.keys(p.a || {}).length}/15 attrs</div>` : `<span class="chip good">FULL</span>`}</td>`;
@@ -50,10 +50,10 @@ ACT["scout"] = async (el) => {
     p.scout = { ...rep, cost: cost + 1 };
     p.a = rep.known;
     p.tags = rep.tags;
-    p.ovr = Math.round((rep.ovr[0] + rep.ovr[1]) / 2);
-    p.pot = Math.round((rep.pot[0] + rep.pot[1]) / 2);
+    p.stars = (rep.ovr[0] + rep.ovr[1]) / 2;
+    p.pstars = (rep.pot[0] + rep.pot[1]) / 2;
     render();
-    U.toast(`Scouting report updated: OVR ${rep.ovr[0]}–${rep.ovr[1]}, POT ${rep.pot[0]}–${rep.pot[1]}`);
+    U.toast(`Scouting report updated: rating ${rep.ovr[0]}–${rep.ovr[1]}★, potential ${rep.pot[0]}–${rep.pot[1]}★`);
   } catch (e) { U.toast(e.message, true); render(); }
 };
 function scoutBar() {
@@ -77,7 +77,7 @@ function draft() {
   if (L.phase !== "draft") {
     const next = Object.values(L.players).filter((p) => p.tid === -2 && p.dclass === L.season + 1);
     const log = L.derived.draft_log;
-    return head("Scouting department", "Draft Room", `The ${L.season + 1} class gets drafted at the start of next season. Spend scouting points to uncover hidden attributes and narrow each prospect's OVR and POT ranges.`, scoutBar()) +
+    return head("Scouting department", "Draft Room", `The ${L.season + 1} class gets drafted at the start of next season. Spend scouting points to uncover hidden attributes and narrow each prospect's rating and potential ranges.`, scoutBar()) +
       (log ? U.slab(`${L.derived.draft_log_season} draft results`, orderStrip(log, null)) + `<div style="height:16px"></div>` : "") +
       U.slab(`${L.season + 1} big board · ${next.length} prospects`, prospectsTable(next, false, false));
   }
@@ -122,7 +122,7 @@ function assetList(tid, sel, side) {
     return `<div class="asset ${on ? "on" : ""}" ${locked ? "" : `data-act="trade-toggle" data-side="${side}" data-kind="players" data-id="${p.id}"`} style="${locked ? "opacity:.55" : ""}" ${ut ? `title="Untouchable"` : ""}>
       <span class="ck">${ut ? "🔒" : on ? "✓" : ""}</span>
       <div class="row" style="gap:8px;min-width:0">${U.ovrBadge(p)}<div style="min-width:0"><div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span data-player="${p.id}">${U.esc(p.fn[0])}. ${U.esc(p.ln)}</span>${U.injTag(p)}${ut ? ` <span class="chip lock">UNTOUCHABLE</span>` : ""}</div><div class="label">${p.pos} · ${p.age}y · ${p.contract ? U.money(p.contract.sal) + " × " + p.contract.yrs : "—"}</div></div></div>
-      <div style="text-align:right">${U.stars(p.stars)}<div class="label">val ${p.tv}</div></div></div>`;
+      <div style="text-align:right"><div class="label">val ${p.tv}</div></div></div>`;
   }).join("") + `<div class="label" style="margin:14px 0 8px">Draft picks</div>` + (picks.length ? picks.map((pk) => {
     const on = sel.picks.includes(pk.id);
     return `<div class="asset ${on ? "on" : ""}" data-act="trade-toggle" data-side="${side}" data-kind="picks" data-id="${pk.id}"><span class="ck">${on ? "✓" : ""}</span><div><div style="font-weight:700" class="mono">${U.esc(pk.label)}</div><div class="label">${pk.rd === 1 ? "First round" : "Second round"}</div></div><div class="label">val ${pk.tv}</div></div>`;
@@ -267,8 +267,8 @@ function fa() {
       <div class="stat-tile"><div class="label">Cap room</div><div class="v ${room < 0 ? "bad" : "good"}">${U.money(room)}</div></div>
       <div class="stat-tile"><div class="label">Mid-level exception</div><div class="v">${t.mle ? "Used" : U.money(L.consts.mle)}</div></div>
       <div class="stat-tile"><div class="label">Roster</div><div class="v">${n} / ${L.consts.roster_max}</div></div></div>` +
-    U.slab(`Available · ${fas.length}`, `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">Player</th><th class="c">Pos</th>${th("age", "Age")}${th("ovr", "OVR")}<th class="c">Rating</th>${th("pot", "POT")}<th class="l">Personality</th><th class="l">Strengths</th>${th("ask", "Agent's ask")}<th></th></tr></thead><tbody>
-      ${fas.map((p) => { const ok = afford(p.ask.sal); return `<tr class="${ok ? "" : "dim-row"}"><td class="l">${U.pname(p, null, p.arch)}</td><td class="c">${U.pos(p.pos)}</td><td>${p.age}</td><td>${U.ovrBadge(p)}</td><td class="c">${U.stars(p.stars)}</td><td class="c">${U.stars(p.pstars, "pot")}</td>
+    U.slab(`Available · ${fas.length}`, `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">Player</th><th class="c">Pos</th>${th("age", "Age")}${th("ovr", "Rating")}${th("pot", "POT")}<th class="l">Personality</th><th class="l">Strengths</th>${th("ask", "Agent's ask")}<th></th></tr></thead><tbody>
+      ${fas.map((p) => { const ok = afford(p.ask.sal); return `<tr class="${ok ? "" : "dim-row"}"><td class="l">${U.pname(p, null, p.arch)}</td><td class="c">${U.pos(p.pos)}</td><td>${p.age}</td><td>${U.ovrBadge(p)}</td><td class="c">${U.stars(p.pstars, "pot")}</td>
         <td class="l">${U.traitChip(p)}</td><td class="l">${p.tags.slice(0, 2).map((x) => `<span class="chip volt">${x}</span>`).join(" ") || topAttrs(p, 2)}</td>
         <td class="hl">${U.money(p.ask.sal)} <span class="mute">× ${p.ask.yrs}</span></td>
         <td><button class="btn xs ${ok ? "pri" : ""}" data-act="nego" data-pid="${p.id}" data-kind="fa" ${L.phase === "playoffs" || n >= L.consts.roster_max ? "disabled" : ""}>Negotiate</button></td></tr>`; }).join("")}
@@ -290,7 +290,7 @@ function negoHTML() {
   return `<div class="ph-head" style="--tc2:#222">${U.avatar(p, null, true)}
       <div><div class="ph-name"><small>${n.kind === "fa" ? "Free agent" : "Re-signing"} · ${p.pos} · ${p.age} yrs</small>${U.esc(p.fn)} ${U.esc(p.ln)}</div>
         <div class="ph-meta">${U.traitChip(p)}<span class="chip">${U.esc(p.arch)}</span></div></div>
-      <div class="col" style="align-items:flex-end">${U.ovrBadge(p, true)}${U.stars(p.stars, "lg")}</div></div>
+      <div class="col" style="align-items:flex-end">${U.ovrBadge(p, true)}</div></div>
     <div class="modal-body">
       <div class="grid g3" style="margin-bottom:12px">
         <div class="stat-tile"><div class="label">Opening ask</div><div class="v" style="font-size:18px">${U.money(st.ask.sal)} × ${st.ask.yrs}</div></div>
@@ -347,11 +347,11 @@ function offseason() {
       ${U.slab(`Re-sign your players · ${resign.length}`, resign.length ? resign.map((p) => `<div class="offer"><div class="row">${U.ovrBadge(p)}${U.pname(p, me(), `${p.pos} · age ${p.age} · ${p.trait || p.arch}`)}<span class="sp"></span>${U.moodChip(p)}</div>
           <div class="row"><span class="label">Agent's ask</span><b class="mono acc">${U.money(p.ask?.sal || 0)} × ${p.ask?.yrs || 2}</b><span class="sp"></span>
           <button class="btn xs pri" data-act="nego" data-pid="${p.id}" data-kind="resign">Negotiate</button><button class="btn xs danger" data-act="release" data-pid="${p.id}">Let go</button></div></div>`).join("") + `<div class="dim" style="font-size:12px">You hold Bird rights, so re-signing is allowed even over the cap. Happy players negotiate more easily; furious ones won't talk at all. Anyone you don't re-sign leaves when you advance.</div>` : `<div class="empty">No expiring contracts</div>`)}
-      ${U.slab("Progression report", rep.length ? `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th class="l">Player</th><th>Age</th><th>Before</th><th>After</th><th>Δ</th></tr></thead><tbody>${rep.map((r) => { const d = r.after - r.before; return `<tr><td class="l">${U.pname(r.p, me(), null, false)}</td><td>${r.p.age}</td><td>${r.before}</td><td class="hl">${r.after}</td><td class="${d > 0 ? "delta-up" : d < 0 ? "delta-down" : ""}">${d > 0 ? "▲" + d : d < 0 ? "▼" + -d : "—"}</td></tr>`; }).join("")}</tbody></table></div>` : `<div class="empty">—</div>`)}
+      ${U.slab("Progression report", rep.length ? `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th class="l">Player</th><th>Age</th><th>Before</th><th>After</th><th>Δ</th></tr></thead><tbody>${rep.map((r) => { const d = r.after - r.before; return `<tr><td class="l">${U.pname(r.p, me(), null, false)}</td><td>${r.p.age}</td><td>${U.stars(r.before)}</td><td>${U.stars(r.after)}</td><td class="${d > 0 ? "delta-up" : d < 0 ? "delta-down" : ""}">${d > 0 ? "▲" + d + "★" : d < 0 ? "▼" + -d + "★" : "—"}</td></tr>`; }).join("")}</tbody></table></div>` : `<div class="empty">—</div>`)}
     </div>
     <div class="grid g2">
       ${awardsSlab(h)}
-      ${U.slab(`Retirements · ${retired.length}`, retired.length ? retired.slice(0, 14).map((r) => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><b>${U.esc(r.name)}</b><span class="pos">${r.pos}</span><span class="label">age ${r.age}</span><span class="sp"></span><span class="mono">peak ${r.peak}</span></div>`).join("") : `<div class="empty">Nobody retired</div>`)}
+      ${U.slab(`Retirements · ${retired.length}`, retired.length ? retired.slice(0, 14).map((r) => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><b>${U.esc(r.name)}</b><span class="pos">${r.pos}</span><span class="label">age ${r.age}</span><span class="sp"></span><span class="mono">peak ${U.stars(r.peak)}</span></div>`).join("") : `<div class="empty">Nobody retired</div>`)}
     </div>
     <div class="dim" style="margin-top:16px;font-size:12px">Roster after expirations: ${n} players. Free agency is open: <a class="acc" href="#/fa">negotiate with free agents →</a></div>`;
 }

@@ -42,7 +42,7 @@ function phaseHero() {
       <button class="btn pri" data-act="sim-day">Sim next day</button>${simBtns}</div>`, { cls: "glow" });
   }
   const h = T(ng.home), a = T(ng.away);
-  const side = (t) => `<div class="side">${U.logo(t, 74)}<div class="tn">${U.esc(t.name)}</div><div class="rec">${recordStr(t)} · OVR ${S.L.derived.strength_disp[t.tid]}</div></div>`;
+  const side = (t) => `<div class="side">${U.logo(t, 74)}<div class="tn">${U.esc(t.name)}</div><div class="rec">${recordStr(t)}</div><div>${U.stars(S.L.derived.team_stars[t.tid])}</div></div>`;
   const rb = rivalryBadge(ng.home, ng.away);
   return U.slab(ng.label, `<div class="grid" style="grid-template-columns:1.3fr 1fr;gap:26px;align-items:center">
     <div><div class="matchup">${side(a)}<div class="vs">@</div>${side(h)}</div>${rb ? `<div class="row" style="justify-content:center;margin-top:14px">${rb}</div>` : ""}</div>
@@ -68,7 +68,7 @@ function leadersMini(key, n = 1) {
 function standingsMini() {
   const L = S.L;
   return `<table class="tbl compact"><thead><tr><th class="l">#</th><th class="l">Team</th><th>W-L</th><th>Diff</th><th>Strk</th></tr></thead><tbody>
-    ${(L.settings?.committee && L.rankings?.length ? L.rankings[L.rankings.length - 1].order : L.derived.standings).map((tid, i) => { const t = T(tid); return `<tr class="${tid === L.user ? "me" : ""} ${i === (L.settings?.playoff || 4) - 1 && !L.settings?.conf ? "cutline" : ""}"><td class="l mute">${i + 1}</td><td class="l">${U.tlink(t, 20)}</td><td class="hl">${t.w}-${t.l}</td><td>${U.sign(t.pf - t.pa)}</td><td>${streak(t.streak)}</td></tr>`; }).join("")}
+    ${L.derived.standings.map((tid, i) => { const t = T(tid); return `<tr class="${tid === L.user ? "me" : ""} ${i === (L.settings?.playoff || 4) - 1 && !L.settings?.conf ? "cutline" : ""}"><td class="l mute">${i + 1}</td><td class="l">${U.tlink(t, 20)}</td><td class="hl">${t.w}-${t.l}</td><td>${U.sign(t.pf - t.pa)}</td><td>${streak(t.streak)}</td></tr>`; }).join("")}
   </tbody></table>`;
 }
 
@@ -103,9 +103,9 @@ function hub() {
       <div><div class="hero-name"><span class="city">${U.esc(t.city)}</span>${U.esc(t.name)}</div>
         <div class="hero-stats">
           <div><div class="label">Record</div><div class="v">${recordStr(t)}</div></div>
-          <div><div class="label">${L.settings?.committee ? "Committee" : "Standing"}</div><div class="v">#${L.settings?.committee && L.rankings?.length ? L.rankings[L.rankings.length - 1].order.indexOf(L.user) + 1 : rank}</div></div>
+          <div><div class="label">${L.settings?.committee ? "Committee" : "Standing"}</div><div class="v">${L.settings?.committee && L.rankings?.length ? (L.rankings[L.rankings.length - 1].order.indexOf(L.user) + 1 || "—") : "#" + rank}</div></div>
           <div><div class="label">Streak</div><div class="v">${streak(t.streak)}</div></div>
-          <div><div class="label">Team OVR</div><div class="v">${L.derived.strength_disp[L.user]}</div></div>
+          <div><div class="label">Team rating</div><div class="v">${U.stars(L.derived.team_stars[L.user], "lg")}</div></div>
           <div><div class="label">Chemistry</div><div class="v">${L.derived.chem[L.user]}</div></div>
           <div><div class="label">Franchise pts</div><div class="v"><a href="#/franchise" class="acc">${t.fp || 0}</a></div></div>
           <div><div class="label">Titles</div><div class="v">${t.titles || 0}</div></div>
@@ -214,13 +214,13 @@ function lineupTable() {
   const L = S.L, t = me();
   const depth = { tight: 8, standard: 10, deep: 11 }[t.strategy.rotation];
   const ps = lineupOf(L.user);
-  return `<div class="tbl-wrap"><table class="tbl" id="lineup-tbl"><thead><tr><th class="l"></th><th class="l">Role</th><th class="l">Player</th><th class="c">Pos</th><th>Age</th><th class="l">Personality</th><th class="l">Mood</th><th class="c">OVR</th><th class="c">Rating</th><th>PPG</th><th>RPG</th><th>APG</th><th>MIN</th><th class="c"></th></tr></thead><tbody>
+  return `<div class="tbl-wrap"><table class="tbl" id="lineup-tbl"><thead><tr><th class="l"></th><th class="l">Role</th><th class="l">Player</th><th class="c">Pos</th><th>Age</th><th class="l">Personality</th><th class="l">Mood</th><th class="c">Rating</th><th>PPG</th><th>RPG</th><th>APG</th><th>MIN</th><th class="c"></th></tr></thead><tbody>
     ${ps.map((p, i) => { const s = pg(p); return `<tr class="lineup-row ${i === 4 ? "cutline" : ""} ${i >= depth ? "dim-row" : ""}" draggable="true" data-pid="${p.id}">
       <td class="l"><span class="drag">⠿</span></td>
       <td class="l"><span class="slot-tag">${i < 5 ? "START · " + SLOT_NAMES[i] : i < depth ? "BENCH " + (i - 4) : "RESERVE"}</span></td>
       <td class="l">${U.pname(p, t, `${p.arch} · ${U.ht(p.ht)}`)}</td><td class="c">${U.pos(p.pos)}</td><td>${p.age}</td>
       <td class="l">${U.traitChip(p)}</td><td class="l">${U.moodChip(p)}</td>
-      <td class="c">${U.ovrBadge(p)}</td><td class="c">${U.stars(p.stars)}</td>
+      <td class="c">${U.ovrBadge(p)}</td>
       <td class="hl">${s ? U.f1(s.pts) : "—"}</td><td>${s ? U.f1(s.reb) : "—"}</td><td>${s ? U.f1(s.ast) : "—"}</td><td>${s ? U.f1(s.min) : "—"}</td>
       <td class="c"><span class="lu-arrows"><button class="iconbtn" data-act="lu-move" data-pid="${p.id}" data-d="-1">▲</button><button class="iconbtn" data-act="lu-move" data-pid="${p.id}" data-d="1">▼</button></span></td></tr>`; }).join("")}
   </tbody></table></div>`;
@@ -230,7 +230,7 @@ function ratingsTable(ps, team) {
   const A = S.L.consts.attrs;
   const short = { ins: "FIN", mid: "MID", three: "3PT", ft: "FT", post: "PST", pass: "PAS", hand: "HND", iq: "IQ", perd: "PER", intd: "INT", stl: "STL", blk: "BLK", reb: "REB", ath: "ATH", sta: "STA" };
   const col = (v) => (v >= 85 ? "var(--volt)" : v >= 72 ? "var(--txt)" : v >= 55 ? "var(--dim)" : "var(--mute)");
-  return `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th class="l">Player</th><th class="c">Pos</th><th class="c">OVR</th><th class="c">POT</th>${A.map((a) => `<th title="${S.L.consts.attr_label[a]}">${short[a]}</th>`).join("")}</tr></thead><tbody>
+  return `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th class="l">Player</th><th class="c">Pos</th><th class="c">Rating</th><th class="c">Potential</th>${A.map((a) => `<th title="${S.L.consts.attr_label[a]}">${short[a]}</th>`).join("")}</tr></thead><tbody>
     ${ps.map((p) => `<tr><td class="l">${U.pname(p, team || T(p.tid), null, false)}</td><td class="c">${U.pos(p.pos)}</td><td class="c">${U.ovrBadge(p)}</td><td class="c">${U.stars(p.pstars, "pot")}</td>
       ${A.map((a) => `<td style="color:${col(p.a[a])}">${p.a[a]}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
@@ -246,7 +246,7 @@ function contractsTable() {
   const L = S.L, t = me();
   const ps = roster(L.user).sort((a, b) => (b.contract?.sal || 0) - (a.contract?.sal || 0));
   const block = new Set(L.block.players);
-  return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">Player</th><th class="c">Pos</th><th>Age</th><th class="c">OVR</th><th>Salary</th><th>Years</th><th>Trade value</th><th class="c">Status</th><th class="c"></th></tr></thead><tbody>
+  return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">Player</th><th class="c">Pos</th><th>Age</th><th class="c">Rating</th><th>Salary</th><th>Years</th><th>Trade value</th><th class="c">Status</th><th class="c"></th></tr></thead><tbody>
     ${ps.map((p) => `<tr><td class="l">${U.pname(p, t, p.arch)}</td><td class="c">${U.pos(p.pos)}</td><td>${p.age}</td><td class="c">${U.ovrBadge(p)}</td>
       <td class="hl">${p.contract ? U.money(p.contract.sal) : "—"}</td><td>${p.contract ? p.contract.yrs : "—"}</td><td>${p.tv}</td>
       <td class="c">${me().untouch === p.id ? `<span class="chip lock">🔒 Untouchable</span>` : L.resign.includes(p.id) ? `<span class="chip hot">Expiring</span>` : block.has(p.id) ? `<span class="chip acc">On block</span>` : ""}</td>
@@ -274,7 +274,7 @@ function rosterView() {
   } else if (tab === "ratings") body = U.slab("Attribute ratings", ratingsTable(lineupOf(L.user), me()));
   else if (tab === "stats") body = U.slab(`${L.season} regular season`, statsTable(roster(L.user))) + (roster(L.user).some((p) => p.stats?.[seasonKey(true)]) ? `<div style="height:16px"></div>` + U.slab("Playoffs", statsTable(roster(L.user), true)) : "");
   else body = U.slab("Contracts & trade block", contractsTable());
-  return head("Roster", `${U.esc(me().name)}`, `${n}/${L.consts.roster_max} players · team OVR ${L.derived.strength_disp[L.user]}`, "") +
+  return head("Roster", `${U.esc(me().name)}`, `${n}/${L.consts.roster_max} players · team rating ${L.derived.team_stars[L.user]}★`, "") +
     `<div class="tabs">${tabs.map(([k, l]) => `<button class="${tab === k ? "on" : ""}" data-act="roster-tab" data-t="${k}">${l}</button>`).join("")}</div>` + body;
 }
 ACT["roster-tab"] = (el) => { S.ui.rosterTab = el.dataset.t; render(); };
@@ -341,12 +341,11 @@ function schedule() {
   const days = L.schedule.map((day, d) => U.slab(`Day ${d + 1}${L.phase === "regular" && d === L.day ? " · next" : ""}`, day.map((g, i) => gameCell(g, byGid[`${L.season}-r${d + 1}-${i}`], L)).join(""), { cls: L.phase === "regular" && d === L.day ? "glow" : "" })).join("");
   const po = L.results.filter((r) => r.po);
   const mine = L.results.filter((r) => !r.po && (r.h === L.user || r.a === L.user));
-  const nxt = L.next_schedule ? U.slab(`${L.season + 1} schedule · published`, `<div class="dim" style="font-size:12px;margin-bottom:10px">Schedules are agreed a year in advance${L.settings?.committee ? " so the committee can judge strength of schedule fairly" : ""}. Your games next season:</div><div class="row wrap" style="gap:8px">${L.next_schedule.map((day, d) => { const g = day.find((x) => x.h === L.user || x.a === L.user); if (!g) return ""; const opp = g.h === L.user ? g.a : g.h; return `<span class="chip" style="padding:6px 10px">D${d + 1} ${g.h === L.user ? "vs" : "@"} ${T(opp).abbr}</span>`; }).join("")}</div>`) : "";
-  return head(`${L.season} season`, "Schedule & Results", `${L.consts.days} games, no repeat opponents${L.settings?.conf ? ", weighted toward your conference" : ""}.`) +
+  return head(`${L.season} season`, "Schedule & Results", `${L.consts.days} games, no repeat opponents.`) +
     (mine.length ? U.slab("Your results", `<div class="row wrap" style="gap:8px">${mine.map((r) => { const won = (r.h === L.user) === (r.hs > r.as); const opp = r.h === L.user ? r.a : r.h; return `<span class="chip ${won ? "good" : "bad"}" style="cursor:pointer;padding:6px 10px" data-go="#/game/${r.gid}">${won ? "W" : "L"} ${r.h === L.user ? "vs" : "@"} ${T(opp).abbr} ${Math.max(r.hs, r.as)}-${Math.min(r.hs, r.as)}</span>`; }).join("")}</div>`) + `<div style="height:16px"></div>` : "") +
     `<div class="grid g3">${days}</div>` +
     (po.length ? `<div style="height:16px"></div>` + U.slab("Playoff games", `<div class="grid g4">${po.map((r) => gameCell({ h: r.h, a: r.a }, r, L)).join("")}</div>`) : "") +
-    (nxt ? `<div style="height:16px"></div>` + nxt : "");
+    "";
 }
 
 // ================================================================== STANDINGS
@@ -356,14 +355,14 @@ function standingsTable(order, cut, title) {
   const rows = order.map((tid, i) => {
     const t = T(tid), gp = t.w + t.l;
     const gb = ((lead.w - t.w) + (t.l - lead.l)) / 2;
-    const rk = L.settings?.committee && L.rankings?.length ? L.rankings[L.rankings.length - 1].order.indexOf(tid) + 1 : null;
+    const rk = L.settings?.committee && L.rankings?.length ? (L.rankings[L.rankings.length - 1].order.indexOf(tid) + 1 || "—") : null;
     return `<tr class="${tid === L.user ? "me" : ""} ${i === cut - 1 ? "cutline" : ""}"><td class="l mute">${i + 1}</td><td class="l">${U.tlink(t, 24, true)}</td>
       <td class="hl">${t.w}</td><td>${t.l}</td><td>${gp ? U.pct(t.w, gp) : "—"}</td><td>${gb ? gb.toFixed(1) : "—"}</td>
       <td>${gp ? U.f1(t.pf / gp) : "—"}</td><td>${gp ? U.f1(t.pa / gp) : "—"}</td><td class="${t.pf - t.pa >= 0 ? "good" : "bad"}">${U.sign(t.pf - t.pa)}</td><td>${streak(t.streak)}</td>
-      ${rk ? `<td class="hl">#${rk}</td>` : ""}<td>${L.derived.strength_disp[tid]}</td><td>${U.money(L.derived.payroll[tid])}</td><td class="c">${modeChip(L.derived.mode[tid])}</td></tr>`;
+      ${rk ? `<td class="hl">${rk === "—" ? "—" : "#" + rk}</td>` : ""}<td>${U.stars(L.derived.team_stars[tid])}</td><td>${U.money(L.derived.payroll[tid])}</td><td class="c">${modeChip(L.derived.mode[tid])}</td></tr>`;
   }).join("");
   const rkh = L.settings?.committee && L.rankings?.length ? "<th>CMTE</th>" : "";
-  return U.slab(title, `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">#</th><th class="l">Team</th><th>W</th><th>L</th><th>PCT</th><th>GB</th><th>PF/G</th><th>PA/G</th><th>DIFF</th><th>STRK</th>${rkh}<th>Team OVR</th><th>Payroll</th><th class="c">Mode</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+  return U.slab(title, `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">#</th><th class="l">Team</th><th>W</th><th>L</th><th>PCT</th><th>GB</th><th>PF/G</th><th>PA/G</th><th>DIFF</th><th>STRK</th>${rkh}<th>Team</th><th>Payroll</th><th class="c">Mode</th></tr></thead><tbody>${rows}</tbody></table></div>`);
 }
 
 function standings() {
@@ -384,19 +383,18 @@ function rankings() {
   const latest = L.rankings?.[L.rankings.length - 1];
   if (!st.committee || !latest) return head("Selection committee", "Rankings") + `<div class="empty">No committee in this league.</div>`;
   const P = st.playoff || 4;
-  const field = new Set(projectedField().field);
   const rows = latest.order.map((tid, i) => {
-    const t = T(tid), inf = latest.info[String(tid)] || {};
-    const mv = inf.prev ? inf.prev - (i + 1) : 0;
+    const t = T(tid), prev = latest.prev?.[String(tid)];
+    const mv = prev ? prev - (i + 1) : 0;
     return `<div class="rank-row ${tid === L.user ? "me" : ""} ${i === P - 1 ? "cut" : ""}">
       <div class="rk">${i + 1}</div>${U.logo(t, 34)}
-      <div><div class="row"><b>${U.esc(t.city)} ${U.esc(t.name)}</b><span class="mono dim">${t.w}-${t.l}</span>${field.has(tid) ? `<span class="chip volt">IN</span>` : ""}${st.conf ? `<span class="chip">${L.consts.conferences[t.conf]}</span>` : ""}</div>
-        <div class="label" style="margin-top:4px">SOS #${inf.sos_rank} (${(inf.sos ?? 0).toFixed(3)}) · Quality wins ${inf.qw} · Bad losses ${inf.bl} · Margin ${U.sign(inf.margin ?? 0)} · Form ${inf.form || "—"}</div></div>
-      <div style="text-align:right">${mv > 0 ? `<span class="mv-up">▲${mv}</span>` : mv < 0 ? `<span class="mv-down">▼${-mv}</span>` : `<span class="mute mono">—</span>`}<div class="label">score ${inf.score}</div></div></div>`;
+      <div><div class="row"><b>${U.esc(t.city)} ${U.esc(t.name)}</b><span class="mono dim">${t.w}-${t.l}</span>${i < P ? `<span class="chip volt">IN</span>` : `<span class="chip">FIRST OUT</span>`}</div></div>
+      <div style="text-align:right">${mv > 0 ? `<span class="mv-up">▲${mv}</span>` : mv < 0 ? `<span class="mv-down">▼${-mv}</span>` : !prev && L.rankings.length > 1 ? `<span class="chip good">NEW</span>` : `<span class="mute mono">—</span>`}</div></div>`;
   }).join("");
+  const mine = latest.order.indexOf(L.user);
   return head("Selection committee", `${latest.final ? "Final" : `Week ${latest.day}`} Rankings`,
-    "The committee weighs record, strength of schedule (opponents and opponents' opponents), quality wins, bad losses, capped scoring margin, recent form and head-to-head. Early in the season it leans on the eye test (roster strength). The dashed line is the playoff cut.") +
-    U.slab(`Top ${L.teams.length}`, rows);
+    "The committee's top four are in the playoff field. The next two are the first teams out. Everyone else is unranked.") +
+    U.slab("Playoff picture", rows + (mine < 0 ? `<div class="dim" style="padding:12px 6px">Your ${U.esc(me().name)} are outside the committee's top ${latest.order.length}.</div>` : ""));
 }
 
 // projected playoff field (mirrors the server's playoff_field)
@@ -548,9 +546,9 @@ function teams() {
       const t = T(tid);
       const top = roster(tid).sort((a, b) => b.ovr - a.ovr).slice(0, 3);
       return `<section class="slab ${tid === L.user ? "glow" : ""}" style="cursor:pointer" data-team="${tid}">
-        <div class="row">${U.logo(t, 54)}<div><div class="label">${U.esc(t.city)}</div><div class="display" style="font-size:19px;font-weight:800">${U.esc(t.name)}</div></div><div class="sp"></div><div style="text-align:right"><div class="big-num" style="font-size:24px">${recordStr(t)}</div><div class="label">OVR ${L.derived.strength_disp[tid]}</div></div></div>
+        <div class="row">${U.logo(t, 54)}<div><div class="label">${U.esc(t.city)}</div><div class="display" style="font-size:19px;font-weight:800">${U.esc(t.name)}</div></div><div class="sp"></div><div style="text-align:right"><div class="big-num" style="font-size:24px">${recordStr(t)}</div><div class="label">${U.stars(L.derived.team_stars[tid])}</div></div></div>
         <div class="divider"></div>
-        <div class="col" style="gap:8px">${top.map((p) => `<div class="row">${U.ovrBadge(p)}<span style="font-weight:600">${U.esc(p.fn[0])}. ${U.esc(p.ln)}</span><span class="mute mono" style="font-size:10px">${p.pos}</span><span class="sp"></span>${U.stars(p.stars)}</div>`).join("")}</div>
+        <div class="col" style="gap:8px">${top.map((p) => `<div class="row">${U.ovrBadge(p)}<span style="font-weight:600">${U.esc(p.fn[0])}. ${U.esc(p.ln)}</span><span class="mute mono" style="font-size:10px">${p.pos}</span><span class="sp"></span></div>`).join("")}</div>
         <div class="row" style="margin-top:12px">${modeChip(L.derived.mode[tid])}<span class="sp"></span><span class="label">${U.money(L.derived.payroll[tid])} · ${t.titles || 0}🏆</span></div></section>`;
     }).join("")}</div>`;
 }
@@ -563,13 +561,13 @@ function teamPage(r) {
   return `<section class="slab hero" style="margin-bottom:16px;--cut:22px;--acc2:${t.c2}">
       ${U.logo(t, 110)}
       <div><div class="hero-name" style="color:${t.c1}"><span class="city">${U.esc(t.city)}</span>${U.esc(t.name)}</div>
-      <div class="hero-stats"><div><div class="label">Record</div><div class="v">${recordStr(t)}</div></div><div><div class="label">Team OVR</div><div class="v">${L.derived.strength_disp[tid]}</div></div><div><div class="label">Payroll</div><div class="v">${U.money(L.derived.payroll[tid])}</div></div><div><div class="label">Titles</div><div class="v">${t.titles || 0}</div></div></div></div>
+      <div class="hero-stats"><div><div class="label">Record</div><div class="v">${recordStr(t)}</div></div><div><div class="label">Team rating</div><div class="v">${U.stars(L.derived.team_stars[tid], "lg")}</div></div><div><div class="label">Payroll</div><div class="v">${U.money(L.derived.payroll[tid])}</div></div><div><div class="label">Titles</div><div class="v">${t.titles || 0}</div></div></div></div>
       <div class="col" style="align-items:flex-end">${modeChip(L.derived.mode[tid])}${tid !== L.user ? `<button class="btn pri" data-act="trade-with" data-tid="${tid}">Trade with ${U.esc(t.abbr)}</button>` : ""}<span class="label">${U.esc(t.arena)}</span></div>
     </section>
     <div class="grid" style="grid-template-columns:minmax(0,1fr) 320px">
       <div class="col" style="gap:16px">
-        ${U.slab("Roster", `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">Player</th><th class="c">Pos</th><th>Age</th><th class="c">OVR</th><th class="c">Rating</th><th class="c">Potential</th><th>Salary</th><th>Yrs</th><th>PPG</th></tr></thead><tbody>
-          ${ps.map((p, i) => { const s = pg(p); return `<tr class="${i === 4 ? "cutline" : ""}"><td class="l">${U.pname(p, t, p.arch)}</td><td class="c">${U.pos(p.pos)}</td><td>${p.age}</td><td class="c">${U.ovrBadge(p)}</td><td class="c">${U.stars(p.stars)}</td><td class="c">${U.stars(p.pstars, "pot")}</td><td>${p.contract ? U.money(p.contract.sal) : "—"}</td><td>${p.contract?.yrs ?? "—"}</td><td class="hl">${s ? U.f1(s.pts) : "—"}</td></tr>`; }).join("")}</tbody></table></div>`)}
+        ${U.slab("Roster", `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">Player</th><th class="c">Pos</th><th>Age</th><th class="c">Rating</th><th class="c">Potential</th><th>Salary</th><th>Yrs</th><th>PPG</th></tr></thead><tbody>
+          ${ps.map((p, i) => { const s = pg(p); return `<tr class="${i === 4 ? "cutline" : ""}"><td class="l">${U.pname(p, t, p.arch)}</td><td class="c">${U.pos(p.pos)}</td><td>${p.age}</td><td class="c">${U.ovrBadge(p)}</td><td class="c">${U.stars(p.pstars, "pot")}</td><td>${p.contract ? U.money(p.contract.sal) : "—"}</td><td>${p.contract?.yrs ?? "—"}</td><td class="hl">${s ? U.f1(s.pts) : "—"}</td></tr>`; }).join("")}</tbody></table></div>`)}
         ${U.slab("Season stats", statsTable(ps))}
       </div>
       <div class="col" style="gap:16px">
@@ -588,7 +586,7 @@ function history() {
   const L = S.L;
   const hist = L.history.slice().reverse();
   const titles = L.teams.slice().sort((a, b) => (b.titles || 0) - (a.titles || 0)).filter((t) => t.titles);
-  const legends = L.retired.filter((r) => r.peak >= 70 || r.awards.length).sort((a, b) => b.peak - a.peak).slice(0, 12);
+  const legends = L.retired.filter((r) => r.peak >= 3.5 || r.awards.length).sort((a, b) => b.peak - a.peak).slice(0, 12);
   return head("Archive", "League History", `${L.history.length} season${L.history.length === 1 ? "" : "s"} completed`) +
     `<div class="grid" style="grid-template-columns:minmax(0,1fr) 340px">
       <div class="col" style="gap:16px">
@@ -600,7 +598,7 @@ function history() {
       </div>
       <div class="col" style="gap:16px">
         ${U.slab("Title count", titles.length ? titles.map((t) => `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line)">${U.tlink(t, 26, true)}<span class="sp"></span><span class="big-num" style="font-size:20px">${t.titles}</span></div>`).join("") : `<div class="empty">No champions yet</div>`)}
-        ${U.slab("Retired legends", legends.length ? legends.map((r) => `<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="row"><b>${U.esc(r.name)}</b><span class="pos">${r.pos}</span><span class="sp"></span><span class="mono acc">${r.peak}</span></div><div class="label" style="margin-top:4px">${r.career.gp || 0} GP · ${((r.career.pts || 0) / Math.max(1, r.career.gp || 1)).toFixed(1)} PPG${(() => { const c = r.awards.filter((a) => a.a === "CHAMP").length, m = r.awards.filter((a) => a.a === "MVP").length; return (c ? ` · ${c}🏆` : "") + (m ? ` · ${m}× MVP` : ""); })()} · retired ${r.s}</div></div>`).join("") : `<div class="empty">Nobody has retired yet</div>`)}
+        ${U.slab("Retired legends", legends.length ? legends.map((r) => `<div style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="row"><b>${U.esc(r.name)}</b><span class="pos">${r.pos}</span><span class="sp"></span><span class="mono acc">${U.stars(r.peak)}</span></div><div class="label" style="margin-top:4px">${r.career.gp || 0} GP · ${((r.career.pts || 0) / Math.max(1, r.career.gp || 1)).toFixed(1)} PPG${(() => { const c = r.awards.filter((a) => a.a === "CHAMP").length, m = r.awards.filter((a) => a.a === "MVP").length; return (c ? ` · ${c}🏆` : "") + (m ? ` · ${m}× MVP` : ""); })()} · retired ${r.s}</div></div>`).join("") : `<div class="empty">Nobody has retired yet</div>`)}
       </div></div>`;
 }
 

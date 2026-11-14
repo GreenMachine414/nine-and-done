@@ -84,15 +84,15 @@ export function openPlayer(pid) {
       <div><div class="ph-name"><small>#${p.num} · ${p.pos} · ${U.esc(status)}</small>${U.esc(p.fn)} ${U.esc(p.ln)}</div>
         <div class="ph-meta"><span class="chip">${p.age} yrs</span><span class="chip">${U.ht(p.ht)} · ${p.wt} lb</span><span class="chip">${U.esc(p.school)}</span><span class="chip acc">${U.esc(p.arch)}</span>
         ${p.tags.map((x) => `<span class="chip volt">${x}</span>`).join("")}${p.inj ? `<span class="chip bad">✚ ${U.esc(p.inj.type)} · ${p.inj.games > 0 ? "out " + p.inj.games : "day-to-day"}</span>` : ""}${rings ? `<span class="chip volt">${"🏆".repeat(Math.min(rings, 6))}</span>` : ""}</div></div>
-      <div style="text-align:right" class="col"><div class="row" style="justify-content:flex-end">${U.ovrBadge(p, true)}</div>
-        <div>${U.stars(p.stars, "lg")}</div><div class="label">Potential ${potTxt}</div><div>${U.stars(p.pstars, "pot")}</div></div>
+      <div style="text-align:right" class="col"><div class="label">Rating</div><div class="row" style="justify-content:flex-end">${U.ovrBadge(p, true)}</div>
+        <div class="label">Potential</div><div>${potTxt}</div></div>
     </div>
     <div class="modal-body">
       <div class="grid g4" style="margin-bottom:18px">
         <div class="stat-tile"><div class="label">Contract</div><div class="v" style="font-size:18px">${p.contract ? `${U.money(p.contract.sal)} <span class="mute" style="font-size:12px">× ${p.contract.yrs}y</span>` : p.ask ? `<span class="dim" style="font-size:14px">asks ${U.money(p.ask.sal)}</span>` : "—"}</div></div>
         <div class="stat-tile"><div class="label">Trade value</div><div class="v" style="font-size:18px">${p.tv ?? "—"}</div></div>
         <div class="stat-tile"><div class="label">Drafted</div><div class="v" style="font-size:14px">${p.draft ? `${p.draft.s} · R${p.draft.rd} #${p.draft.no} (${T(p.draft.tid).abbr})` : "Undrafted"}</div></div>
-        <div class="stat-tile"><div class="label">OVR history</div><div style="margin-top:6px">${U.sparkline(p.hist.map((h) => h.ovr), 150, 30)}</div></div>
+        <div class="stat-tile"><div class="label">Rating trend</div><div style="margin-top:6px">${U.sparkline(p.hist.map((h) => h.ovr), 150, 30)}</div></div>
       </div>
       <div class="grid" style="grid-template-columns: 1.5fr 1fr; gap:22px">
         <div><div class="label" style="margin-bottom:6px">Attributes <span class="mute">· red tick = ${p.pos} ceiling</span></div><div class="attr-grid">${attrs}</div></div>
@@ -159,7 +159,7 @@ ACT["pm-scout"] = async (el) => {
     S.L.scout.pts -= cost;
     S.L.scout.lv[String(pid)] = rep.step;
     Object.assign(p, { scout: { ...rep, cost: cost + 1 }, a: rep.known, tags: rep.tags,
-      ovr: Math.round((rep.ovr[0] + rep.ovr[1]) / 2), pot: Math.round((rep.pot[0] + rep.pot[1]) / 2) });
+      stars: (rep.ovr[0] + rep.ovr[1]) / 2, pstars: (rep.pot[0] + rep.pot[1]) / 2 });
     hooks.render();
     openPlayer(pid);
   } catch (e) { U.toast(e.message, true); el.disabled = false; }

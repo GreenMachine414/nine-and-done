@@ -138,7 +138,7 @@ def new_league(name, user_tid, mode="classic", seed=None, settings=None):
     if n not in VALID_TEAM_COUNTS:
         raise GameError("Leagues can have 10, 12, 14, 16, 18 or 20 teams.")
     mode = st.get("start") or mode
-    settings = {"teams": n, "conf": bool(st.get("conf")), "committee": bool(st.get("committee")),
+    settings = {"teams": n, "conf": False, "committee": bool(st.get("committee")),
                 "start": mode, "playoff": playoff_size(n)}
     franchises, user = pick_franchises(user_tid, n)
     L = {
@@ -205,7 +205,6 @@ def new_league(name, user_tid, mode="classic", seed=None, settings=None):
         if p["tid"] == -1:
             p["ask"] = P.contract_ask(p)
     L["schedule"] = make_schedule(rng, L)
-    L["next_schedule"] = make_schedule(rng, L)
     refresh_energy(L, full=True)
     ai_untouchables(L, rng)
     if settings["committee"]:
@@ -240,6 +239,12 @@ def migrate(L):
         L.setdefault(k, v)
     if not L["energy"]:
         refresh_energy(L, full=True)
+    # conferences and 8-team brackets were retired: every league is one table with a 4-team playoff
+    L["settings"]["conf"] = False
+    L["settings"]["playoff"] = 4
+    L["next_schedule"] = None
+    for t in L["teams"]:
+        t["conf"] = 0
     if L["playoffs"] and "rounds" not in L["playoffs"]:
         po = L["playoffs"]
         po.update({"rounds": 2, "size": 4, "round_names": ["Semifinals", "Finals"],
@@ -367,7 +372,7 @@ def ai_untouchables(L, rng):
         if not r:
             continue
         best = max(r, key=lambda p: p["ovr"] + (max(0, p["pot"] - p["ovr"]) * 0.5 if p["age"] <= 23 else 0))
-        elite = P.disp(best["ovr"]) >= 89 or (best["age"] <= 23 and P.disp(best["pot"]) >= 90)
+        elite = best["ovr"] >= 85 or (best["age"] <= 23 and best["pot"] >= 87)
         if elite and rng.random() < 0.45:
             t["untouch"] = best["id"]
 
@@ -1089,9 +1094,8 @@ def advance_season(L, rng=None):
     L["offseason"] = None
     for t in L["teams"]:
         t.update({"w": 0, "l": 0, "pf": 0, "pa": 0, "h2h": {}, "streak": 0, "results": []})
-    # schedules are agreed a year in advance: play last year's published slate, publish next year's
-    L["schedule"] = L.get("next_schedule") or make_schedule(rng, L)
-    L["next_schedule"] = make_schedule(rng, L)
+    L["schedule"] = make_schedule(rng, L)
+    L["next_schedule"] = None
     L["rankings"] = []
     L["season_awards"] = None
     L["nego"] = {}

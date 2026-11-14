@@ -98,7 +98,8 @@ def run(cfg, seed):
                 FR.allstar_run(L, rng)
         po = L["history"][-1]
         playoffs = [t for t in L["teams"] if t["hist"][-1]["res"] != "Lottery"]
-        assert len(playoffs) == cfg.get("playoff", 4 if n <= 12 else 8), len(playoffs)
+        assert len(playoffs) == 4, len(playoffs)
+        assert not L["settings"]["conf"]
         if cfg["committee"]:
             assert L["rankings"] and L["rankings"][-1]["final"]
         out.append(f'  season {L["season"]}: field {len(playoffs)}, rounds {len(set(r for r in [s["rd"] for s in []]))}'
@@ -118,12 +119,12 @@ def run(cfg, seed):
     assert len(after["known"]) > len(before["known"])
     assert after["ovr"][1] - after["ovr"][0] <= before["ovr"][1] - before["ovr"][0]
     lo, hi = after["ovr"]
-    assert lo <= P.disp(p0["ovr"]) <= hi, (lo, P.disp(p0["ovr"]), hi)
+    assert lo <= P.stars_for(p0["ovr"]) <= hi, (lo, P.stars_for(p0["ovr"]), hi)
     out.append(f'  scouting: {len(before["known"])}->{len(after["known"])} attrs, OVR {before["ovr"]}->{after["ovr"]}'
-               f' (true {P.disp(p0["ovr"])}), POT {before["pot"]}->{after["pot"]} (true {P.disp(p0["pot"])})')
+               f' (true {P.stars_for(p0["ovr"])}), POT {before["pot"]}->{after["pot"]} (true {P.stars_for(p0["pot"])})')
     act = [p for p in L["players"].values() if p["tid"] >= 0]
-    d = sorted((P.disp(p["ovr"]) for p in act), reverse=True)
-    out.append(f'  ratings: top {d[:6]}, 90-club {sum(1 for x in d if x >= 90)}, median {d[len(d) // 2]}, '
+    d = sorted((P.stars_for(p["ovr"]) for p in act), reverse=True)
+    out.append(f'  stars: 5.0 x{sum(1 for x in d if x == 5)}, 4.5 x{sum(1 for x in d if x == 4.5)}, median {d[len(d) // 2]}, '
                f'AI upgrades bought {sum(sum(t["upg"].values()) for t in L["teams"] if t["tid"] != u)}')
     return out
 

@@ -28,7 +28,8 @@ function route() {
   return { name: parts[0], arg: parts[1], query: new URLSearchParams(query || "") };
 }
 export const go = (h) => { location.hash = h; };
-window.addEventListener("hashchange", () => render());
+window.addEventListener("hashchange", () => { document.body.classList.remove("menu-open"); render(); });
+ACT["menu"] = () => document.body.classList.toggle("menu-open");
 
 const NAV = [
   ["hub", "Hub"], ["roster", "Roster"], ["schedule", "Schedule"], ["standings", "Standings"], ["rankings", "Rankings"],
@@ -74,7 +75,7 @@ function shell(content, current) {
   return `<div class="shell">
     <aside class="rail">
       <div class="brand"><div class="brand-mark">9&</div><div class="brand-name">NINE &amp; DONE<small>DYNASTY SIM</small></div></div>
-      ${nav}
+      <nav class="rail-nav">${nav}</nav>
       <div class="rail-foot">
         <div class="row">${U.logo(t, 30)}<div><div style="font-weight:700;font-size:12.5px">${U.esc(t.name)}</div><div class="label">${U.esc(L.name)}</div></div></div>
         <button class="btn ghost sm" data-act="exit-league">Switch League</button>
@@ -82,6 +83,7 @@ function shell(content, current) {
     </aside>
     <div class="main">
       <header class="topbar">
+        <button class="menu-btn" data-act="menu" aria-label="Menu">☰</button>
         <div class="phase-chip"><span class="dot"></span><span class="label" style="color:var(--txt)">${L.season} · ${phaseLabel(L)}</span></div>
         ${ticker(L)}
         <div class="cap-chip"><span class="dim">PAYROLL</span><b class="${L.derived.payroll[L.user] > L.consts.cap ? "warn" : ""}">${U.money(L.derived.payroll[L.user])}</b><span class="mute">/ ${U.money(L.consts.cap)}</span></div>
@@ -119,11 +121,9 @@ function drawLanding() {
     if (panel) panel.scrollTop = panelScroll;
     window.scrollTo(0, pageScroll);
   });
-  const P = NEW.teams <= 12 ? 4 : 8;
-  const confNote = NEW.conf ? `${NEW.teams / 2} teams per conference (Atlas & Horizon)` : "One table, no conferences";
   const fmt = NEW.committee
-    ? `A selection committee ranks every team weekly (record, strength of schedule, quality wins, bad losses, margin, form, head-to-head). Top ${P} make it${NEW.conf ? ", with each conference's top-ranked team getting an automatic bid" : ""}.`
-    : NEW.conf ? `Top ${P / 2} in each conference make the playoffs.` : `Top ${P} by record make the playoffs.`;
+    ? "A selection committee ranks teams every week and picks the four playoff teams."
+    : "The top four teams by record make the playoffs.";
   root.innerHTML = `<div class="landing">
     <div class="landing-left">
       <div><div class="kicker">Basketball dynasty simulator</div>
@@ -150,8 +150,7 @@ function drawLanding() {
         <div class="setup-row"><span style="font-weight:700">Rosters</span>${U.seg("nl-start", NEW.start, [["classic", "Pre-built + rookie draft"], ["fantasy", "Fantasy draft"]])}
           <div class="hint">${NEW.start === "fantasy" ? "Every player goes into one pool. Build from nothing over a 13-round snake draft." : "Teams start with balanced rosters. The season opens with a two-round rookie draft."}</div></div>
         <div class="setup-row"><span style="font-weight:700">Teams</span>${U.seg("nl-teams", String(NEW.teams), [10, 12, 14, 16, 18, 20].map((n) => [String(n), String(n)]))}
-          <div class="hint">${P}-team playoff field · ${P === 4 ? "2 rounds" : "3 rounds"}, every round best-of-five.</div></div>
-        <div class="setup-row"><span style="font-weight:700">Conferences</span><div class="row"><div class="toggle ${NEW.conf ? "on" : ""}" data-act="nl-toggle" data-k="conf"></div><span class="dim" style="font-size:12.5px">${confNote}</span></div></div>
+          <div class="hint">Four teams make the playoffs: semifinals and Finals, both best-of-five.</div></div>
         <div class="setup-row"><span style="font-weight:700">Selection committee</span><div class="row"><div class="toggle ${NEW.committee ? "on" : ""}" data-act="nl-toggle" data-k="committee"></div><span class="dim" style="font-size:12.5px">${NEW.committee ? "CFP-style rankings" : "Standings decide"}</span></div>
           <div class="hint">${fmt}</div></div>
       </div>
@@ -181,7 +180,7 @@ ACT["create-league"] = async () => {
   const name = document.getElementById("lg-name").value.trim();
   root.innerHTML = `<div class="loader">GENERATING LEAGUE</div>`;
   try {
-    const r = await api("saves", { name, team: NEW.team, settings: { teams: NEW.teams, conf: NEW.conf, committee: NEW.committee, start: NEW.start } });
+    const r = await api("saves", { name, team: NEW.team, settings: { teams: NEW.teams, committee: NEW.committee, start: NEW.start } });
     S.sid = r.id; localStorage.setItem("nd_sid", S.sid);
     SAVES = null;
     await boot("#/draft");
@@ -205,8 +204,14 @@ export function render() {
   }
   const v = ALL[r.name] || ALL.hub;
   const key = ALL[r.name] ? r.name : "hub";
-  const scrollY = lastRoute === location.hash ? window.scrollY : 0;
+  const same = lastRoute === location.hash;
+  const scrollY = same ? window.scrollY : 0;
+  // inner scroll boxes (prospect board, tables, nav rail) keep their position across redraws
+  const inner = same ? [...root.querySelectorAll(".tbl-wrap, .rail-nav, [data-keep-scroll]")].map((el) => [el.scrollTop, el.scrollLeft]) : [];
   root.innerHTML = shell(v(r), key);
+  root.querySelectorAll(".tbl-wrap, .rail-nav, [data-keep-scroll]").forEach((el, i) => {
+    if (inner[i]) { el.scrollTop = inner[i][0]; el.scrollLeft = inner[i][1]; }
+  });
   lastRoute = location.hash;
   window.scrollTo(0, scrollY);
   ALL[`${key}_mount`]?.(r);

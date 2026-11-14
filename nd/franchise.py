@@ -563,8 +563,8 @@ def committee_rank(L, final=False):
     if L["day"] > 0:
         u = L["user"]
         LG.news(L, f"Committee rankings (week {L['day']}): " + ", ".join(
-            f"{i + 1}. {LG.team(L, t)['abbr']}" for i, t in enumerate(order[:5])) +
-            (f" … you're #{order.index(u) + 1}" if order.index(u) >= 5 else ""), "info")
+            f"{i + 1}. {LG.team(L, t)['abbr']}" for i, t in enumerate(order[:4])) +
+            f" · first out: {', '.join(LG.team(L, t)['abbr'] for t in order[4:6])}", "info")
     return order
 
 

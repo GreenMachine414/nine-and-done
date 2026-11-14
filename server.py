@@ -44,23 +44,29 @@ def view(L):
         q.pop("t", None)
         q["t"] = {kk: vv for kk, vv in p["t"].items() if kk != "_n"}
         q["tv"] = TR.player_value(L, p)
-        # everything the browser sees uses the 2K-style display scale
-        q["ovr"], q["pot"] = D(p["ovr"]), D(p["pot"])
-        q["hist"] = [{**h, "ovr": D(h["ovr"])} for h in p.get("hist", [])]
+        # players are shown only as half-star ratings; raw numbers stay for sorting
+        q["hist"] = [{**h, "st": P.stars_for(h["ovr"])} for h in p.get("hist", [])]
         if p["tid"] == -2 and p.get("prospect"):
             rep = P.scout_report(p, L["scout"]["lv"].get(k, 0), sc_lvl)
             rep["cost"] = OF.scout_cost(L, p["id"])
             q.update({"fog": True, "scout": rep, "a": rep["known"], "tags": rep["tags"], "t": None, "tv": None,
-                      "ovr": round(sum(rep["ovr"]) / 2), "pot": round(sum(rep["pot"]) / 2)})
-            q["stars"] = P.stars_for(P.undisp(q["ovr"]))
-            q["pstars"] = P.stars_for(P.undisp(q["pot"]))
+                      "stars": sum(rep["ovr"]) / 2, "pstars": sum(rep["pot"]) / 2,
+                      "ovr": round(p["ovr"] + (hash((p["id"], rep["step"])) % 7 - 3) * (4 - rep["step"]) / 4),
+                      "pot": round(p["pot"])})
         if p["tid"] == -1:
             q["ask"] = P.contract_ask(p, LG.fa_mood(L, L["user"]))
         out["players"][k] = q
     if L.get("offseason"):
-        out["offseason"] = {**L["offseason"], "report": [{**r, "before": D(r["before"]), "after": D(r["after"])}
+        out["offseason"] = {**L["offseason"], "report": [{**r, "before": P.stars_for(r["before"]),
+                                                            "after": P.stars_for(r["after"])}
                                                            for r in L["offseason"].get("report", [])]}
-    out["retired"] = [{**r, "peak": D(r["peak"])} for r in L.get("retired", [])]
+    out["retired"] = [{**r, "peak": P.stars_for(r["peak"])} for r in L.get("retired", [])]
+    # committee: only the playoff spots and the first two teams out are public; no formula details
+    if L.get("rankings"):
+        cut = (L["settings"].get("playoff") or 4) + 2
+        out["rankings"] = [{"day": r["day"], "final": r.get("final"), "order": r["order"][:cut],
+                            "prev": {str(t): (r["info"].get(str(t)) or {}).get("prev") for t in r["order"][:cut]}}
+                           for r in L["rankings"]]
     race = LG.award_race(L) if L["phase"] == "regular" and L["day"] >= 1 else {}
     race_out = {}
     for key, rows in race.items():
@@ -86,7 +92,7 @@ def view(L):
         "three_pending": FR.user_needs_three(L),
         "race": race_out,
         "conf_standings": LG.conf_standings(L) if L["settings"].get("conf") else None,
-        "strength_disp": [D(LG.team_strength(L, t["tid"])) for t in L["teams"]],
+        "team_stars": [P.stars_for(LG.team_strength(L, t["tid"]) + 4) for t in L["teams"]],
     }
     out["consts"] = {"cap": SALARY_CAP, "apron": HARD_APRON, "roster_max": ROSTER_MAX, "roster_min": ROSTER_MIN,
                      "deadline": TRADE_DEADLINE_DAY, "days": SEASON_DAYS, "mle": LG.MLE,
@@ -110,7 +116,7 @@ def live_meta(L, g):
         for gp in t.players:
             p = gp.p
             names[str(gp.id)] = {"n": P.short_name(p), "fn": P.full_name(p), "pos": p["pos"], "num": p["num"],
-                                 "ovr": P.disp(p["ovr"]), "trait": p.get("trait"), "morale": p.get("morale", 65)}
+                                 "stars": p["stars"], "trait": p.get("trait"), "morale": p.get("morale", 65)}
     return {"gid": lv["gid"], "h": lv["h"], "a": lv["a"], "side": g.live_side, "po": lv["po"],
             "series": lv["series"], "rival": FR.rival_tier(L, lv["h"], lv["a"]),
             "rosters": [[gp.id for gp in t.players] for t in g.T], "names": names,
@@ -411,7 +417,7 @@ class H(BaseHTTPRequestHandler):
                     p = L["players"].get(str(pid))
                     if p:
                         names[pid] = {"n": P.short_name(p), "fn": P.full_name(p), "pos": p["pos"],
-                                      "num": p["num"], "ovr": P.disp(p["ovr"])}
+                                      "num": p["num"], "stars": p["stars"]}
                     else:
                         r = next((x for x in L["retired"] if str(x["id"]) == str(pid)), None)
                         names[pid] = {"n": r["name"] if r else "Retired", "fn": r["name"] if r else "Retired",
