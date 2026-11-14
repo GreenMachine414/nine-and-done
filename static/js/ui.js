@@ -53,25 +53,26 @@ export function logo(t, size = 36) {
 
 const STAR = "M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7-6.2-3.8-6.2 3.8 1.6-7L2 9.2l7.1-.6z";
 let starId = 0;
-// 1-5 stars in half-star steps
-export function stars(n, cls = "") {
-  n = Math.max(0, Math.min(5, Math.round((+n || 0) * 2) / 2));
-  let s = `<span class="stars ${cls}" title="${n} star${n === 1 ? "" : "s"}">`;
+// 1.0-5.0 stars to the nearest tenth: each star fills proportionally
+export function stars(n, cls = "", showNum = false) {
+  n = Math.max(0, Math.min(5, Math.round((+n || 0) * 10) / 10));
+  let s = `<span class="stars ${cls}" title="${n.toFixed(1)} stars">`;
   for (let i = 1; i <= 5; i++) {
-    if (n >= i) s += `<svg viewBox="0 0 24 24"><path class="on" d="${STAR}"/></svg>`;
-    else if (n >= i - 0.5) {
-      const id = `hs${++starId}`;
-      s += `<svg viewBox="0 0 24 24"><defs><clipPath id="${id}"><rect x="0" y="0" width="12" height="24"/></clipPath></defs><path class="off" d="${STAR}"/><path class="on" d="${STAR}" clip-path="url(#${id})"/></svg>`;
+    const f = Math.max(0, Math.min(1, n - (i - 1)));
+    if (f >= 1) s += `<svg viewBox="0 0 24 24"><path class="on" d="${STAR}"/></svg>`;
+    else if (f > 0) {
+      const id = `ps${++starId}`;
+      s += `<svg viewBox="0 0 24 24"><defs><clipPath id="${id}"><rect x="0" y="0" width="${(2 + f * 20).toFixed(1)}" height="24"/></clipPath></defs><path class="off" d="${STAR}"/><path class="on" d="${STAR}" clip-path="url(#${id})"/></svg>`;
     } else s += `<svg viewBox="0 0 24 24"><path class="off" d="${STAR}"/></svg>`;
   }
-  return s + "</span>";
+  return s + (showNum ? `<b class="snum">${n.toFixed(1)}</b>` : "") + "</span>";
 }
-const fmtStar = (n) => `${n}★`;
-// a player's rating: stars only (scouted prospects show a star range)
+const fmtStar = (n) => `${(+n).toFixed(1)}★`;
+// a player's rating: stars plus the exact value (scouted prospects show a star range)
 export const ovrBadge = (p, lg = false) => (p.fog && p.scout
   ? `<span class="srange ${lg ? "lg" : ""}" title="Scouted rating range">${p.scout.ovr[0] === p.scout.ovr[1] ? fmtStar(p.scout.ovr[0]) : `${fmtStar(p.scout.ovr[0])}–${fmtStar(p.scout.ovr[1])}`}</span>`
-  : stars(p.stars, lg ? "lg" : ""));
-export const potText = (p) => (p.fog && p.scout ? `<span class="srange pot">${fmtStar(p.scout.pot[0])}–${fmtStar(p.scout.pot[1])}</span>` : stars(p.pstars, "pot"));
+  : stars(p.stars, lg ? "lg" : "", true));
+export const potText = (p) => (p.fog && p.scout ? `<span class="srange pot">${fmtStar(p.scout.pot[0])}–${fmtStar(p.scout.pot[1])}</span>` : stars(p.pstars, "pot", true));
 export const pos = (p) => `<span class="pos">${p}</span>`;
 
 export function avatar(p, team, lg = false) {

@@ -95,18 +95,34 @@ class Store:
         self.cache = OrderedDict()   # sid -> (owner, league)
         # write-behind: league saves are serialized immediately, written to the DB by a background thread
         self.pending = {}            # sid -> (meta tuple, json text)
+        self.pending_games = {}      # (sid, gid) -> (season, json text)
         self.wake = threading.Condition()
         threading.Thread(target=self._writer, daemon=True).start()
 
     def _writer(self):
         while True:
             with self.wake:
-                while not self.pending:
+                while not self.pending and not self.pending_games:
                     self.wake.wait()
             self.flush()
 
     def flush(self):
-        """Write every queued league save now (also called on shutdown)."""
+        """Write every queued league save and box score now (also called on shutdown)."""
+        with self.wake:
+            games = dict(self.pending_games)
+        if games:
+            try:
+                with self.lock:
+                    self.db.run("INSERT INTO games (save_id, gid, season, data) VALUES (?,?,?,?) "
+                                "ON CONFLICT (save_id, gid) DO UPDATE SET season = excluded.season, data = excluded.data",
+                                [(sid, gid, season, text) for (sid, gid), (season, text) in games.items()], many=True)
+                with self.wake:
+                    for k, v in games.items():
+                        if self.pending_games.get(k) is v:
+                            del self.pending_games[k]
+            except Exception as e:  # noqa
+                print("game save failed, retrying:", e, flush=True)
+                time.sleep(1.0)
         while True:
             with self.wake:
                 if not self.pending:
@@ -193,6 +209,8 @@ class Store:
                 return False
             with self.wake:
                 self.pending.pop(sid, None)
+                for k in [k for k in self.pending_games if k[0] == sid]:
+                    del self.pending_games[k]
             self.db.run("DELETE FROM saves WHERE id = ?", (sid,))
             self.db.run("DELETE FROM games WHERE save_id = ?", (sid,))
             self.cache.pop(sid, None)
@@ -200,14 +218,19 @@ class Store:
 
     # ---------------------------------------------------------------- games
     def put_games(self, sid, docs):
+        """Box scores are queued and written in the background, like league saves."""
         if not docs:
             return
-        with self.lock:
-            self.db.run("INSERT INTO games (save_id, gid, season, data) VALUES (?,?,?,?) "
-                        "ON CONFLICT (save_id, gid) DO UPDATE SET season = excluded.season, data = excluded.data",
-                        [(int(sid), d["gid"], d["s"], json.dumps(d)) for d in docs], many=True)
+        with self.wake:
+            for d in docs:
+                self.pending_games[(int(sid), d["gid"])] = (d["s"], json.dumps(d))
+            self.wake.notify()
 
     def get_game(self, sid, gid):
+        with self.wake:
+            queued = self.pending_games.get((int(sid), gid))
+        if queued:
+            return json.loads(queued[1])
         with self.lock:
             row = self.db.run("SELECT data FROM games WHERE save_id = ? AND gid = ?", (int(sid), gid), fetch="one")
         return json.loads(row[0]) if row else None

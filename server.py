@@ -50,7 +50,7 @@ def view(L):
             rep = P.scout_report(p, L["scout"]["lv"].get(k, 0), sc_lvl)
             rep["cost"] = OF.scout_cost(L, p["id"])
             q.update({"fog": True, "scout": rep, "a": rep["known"], "tags": rep["tags"], "t": None, "tv": None,
-                      "stars": sum(rep["ovr"]) / 2, "pstars": sum(rep["pot"]) / 2,
+                      "stars": round(sum(rep["ovr"]) / 2, 1), "pstars": round(sum(rep["pot"]) / 2, 1),
                       "ovr": round(p["ovr"] + (hash((p["id"], rep["step"])) % 7 - 3) * (4 - rep["step"]) / 4),
                       "pot": round(p["pot"])})
         if p["tid"] == -1:
@@ -92,7 +92,8 @@ def view(L):
         "three_pending": FR.user_needs_three(L),
         "race": race_out,
         "conf_standings": LG.conf_standings(L) if L["settings"].get("conf") else None,
-        "team_stars": [P.stars_for(LG.team_strength(L, t["tid"]) + 4) for t in L["teams"]],
+        # team strength spans a narrow band, so teams get their own, wider star scale
+        "team_stars": [round(min(5.0, max(1.0, 1 + (LG.team_strength(L, t["tid"]) - 61) * 0.27)), 1) for t in L["teams"]],
     }
     out["consts"] = {"cap": SALARY_CAP, "apron": HARD_APRON, "roster_max": ROSTER_MAX, "roster_min": ROSTER_MIN,
                      "deadline": TRADE_DEADLINE_DAY, "days": SEASON_DAYS, "mle": LG.MLE,

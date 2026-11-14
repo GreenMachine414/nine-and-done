@@ -11,9 +11,19 @@ const ALL = { ...VIEWS, ...OPS, ...EXTRAS };
 const root = document.getElementById("root");
 
 // ------------------------------------------------------------------ modal
-export function modal(html, cls = "") {
+export function modal(html, cls = "", key = "") {
   const mr = document.getElementById("modal-root");
-  mr.innerHTML = `<div class="modal-bg"><div class="modal ${cls}"><button class="iconbtn modal-x" data-act="close-modal">✕</button>${html}</div></div>`;
+  const open = mr.querySelector(".modal-bg");
+  // same card already open: update it in place (no re-open animation, scroll position kept)
+  if (key && open && open.dataset.key === key) {
+    const box = open.querySelector(".modal");
+    const top = box.scrollTop;
+    box.className = `modal ${cls}`;
+    box.innerHTML = `<button class="iconbtn modal-x" data-act="close-modal">✕</button>${html}`;
+    box.scrollTop = top;
+    return;
+  }
+  mr.innerHTML = `<div class="modal-bg" data-key="${key}"><div class="modal ${cls}"><button class="iconbtn modal-x" data-act="close-modal">✕</button>${html}</div></div>`;
   mr.querySelector(".modal-bg").addEventListener("mousedown", (e) => { if (e.target.classList.contains("modal-bg")) closeModal(); });
 }
 export function closeModal() { document.getElementById("modal-root").innerHTML = ""; }
@@ -205,6 +215,7 @@ export function render() {
   const v = ALL[r.name] || ALL.hub;
   const key = ALL[r.name] ? r.name : "hub";
   const same = lastRoute === location.hash;
+  const railTop = root.querySelector(".rail-nav")?.scrollTop || 0;   // the nav keeps its place across pages
   const scrollY = same ? window.scrollY : 0;
   // inner scroll boxes (prospect board, tables, nav rail) keep their position across redraws
   const inner = same ? [...root.querySelectorAll(".tbl-wrap, .rail-nav, [data-keep-scroll]")].map((el) => [el.scrollTop, el.scrollLeft]) : [];
@@ -212,6 +223,11 @@ export function render() {
   root.querySelectorAll(".tbl-wrap, .rail-nav, [data-keep-scroll]").forEach((el, i) => {
     if (inner[i]) { el.scrollTop = inner[i][0]; el.scrollLeft = inner[i][1]; }
   });
+  const rail = root.querySelector(".rail-nav");
+  if (rail) rail.scrollTop = railTop;
+  // an open player card refreshes in place after any action
+  const card = document.querySelector("#modal-root .modal-bg[data-key^='p:']");
+  if (card) openPlayer(+card.dataset.key.slice(2));
   lastRoute = location.hash;
   window.scrollTo(0, scrollY);
   ALL[`${key}_mount`]?.(r);

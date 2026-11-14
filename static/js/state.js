@@ -38,11 +38,12 @@ export async function api(path, body, method) {
 }
 
 let busyEl = null;
-function busy(on, label = "SIMULATING") {
+// slim progress bar along the top (no full-screen overlay); input is blocked while a server action runs
+function busy(on, label = "WORKING") {
   if (on) {
     busyEl = document.createElement("div");
-    busyEl.className = "busy";
-    busyEl.innerHTML = `<div class="loader">${label}</div>`;
+    busyEl.className = "busybar";
+    busyEl.innerHTML = `<i></i><span>${label}</span>`;
     document.body.appendChild(busyEl);
   } else if (busyEl) { busyEl.remove(); busyEl = null; }
 }
@@ -74,7 +75,8 @@ export async function query(type, payload = {}) {
 
 export async function act(type, payload = {}, { quiet = false, label, rerender = true } = {}) {
   await bgChain;   // never race a pending background save
-  const t = setTimeout(() => busy(true, label), 180);
+  document.body.classList.add("waiting");
+  const t = setTimeout(() => busy(true, label), 120);
   try {
     const r = await api(`s/${S.sid}/act`, { type, ...payload });
     S.L = r.state;
@@ -87,6 +89,7 @@ export async function act(type, payload = {}, { quiet = false, label, rerender =
   } finally {
     clearTimeout(t);
     busy(false);
+    document.body.classList.remove("waiting");
   }
 }
 

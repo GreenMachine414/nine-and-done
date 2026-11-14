@@ -133,15 +133,9 @@ def undisp(d):
     return 100.0
 
 
-# Players are shown only as 1-5 stars in half-star steps, on the original rating scale.
-STAR_STEPS = [(85, 5.0), (80, 4.5), (75, 4.0), (70, 3.5), (65, 3.0), (60, 2.5), (55, 2.0), (50, 1.5)]
-
-
+# Players are shown only as 1.0-5.0 stars, to the nearest tenth. 5.0 is essentially a perfect player.
 def stars_for(ovr):
-    for cut, st in STAR_STEPS:
-        if ovr >= cut:
-            return st
-    return 1.0
+    return round(min(5.0, max(1.0, 1 + (ovr - 45) * 0.08)), 1)
 
 
 def market_salary(ovr, age):

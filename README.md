@@ -14,7 +14,7 @@ The game opens at http://127.0.0.1:8777. It needs Python 3.10+ and uses only the
 
 - **Custom leagues**: 10–20 teams (even numbers) and an optional CFP-style selection committee. Rosters start either pre-built or from a fantasy draft. Four teams make the playoffs (semifinals and Finals, both best-of-five).
 - **Selection committee**: private weekly rankings that weigh the resume (record, schedule strength, quality wins, bad losses and more). Only the top four and the first two teams out are published.
-- **Ratings**: players are shown only as 1–5 stars in half-star steps. Individual attributes are still shown.
+- **Ratings**: players and teams are shown only as 1.0–5.0 stars, to the nearest tenth (5.0 means essentially perfect). Individual attributes are still shown.
 - **Front office**: daily trade calls, one untouchable per season (AI teams sometimes name one too), contract negotiation with agent patience and counteroffers, and prospect scouting with fog of war (hidden attributes plus OVR/POT ranges narrowed with scouting points). Each of these is helped by an upgrade track.
 - **Award race**: live ladders and finalists during the season. Voters add variance, and winners are revealed when the regular season ends.
 

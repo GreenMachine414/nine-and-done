@@ -86,7 +86,7 @@ function allstar() {
   const dunkBody = dk.winner ? dk.entrants.map((pid) => playerLine(pid, `<span class="mono" style="margin-left:10px">${(dk.r1[String(pid)] || []).join(" + ")}${dk.final[String(pid)] ? ` · F ${dk.final[String(pid)].join(" + ")}` : ""}</span>${dk.winner === pid ? " 🏆" : ""}`)).join("") : dk.entrants.map((pid) => playerLine(pid)).join("");
   const done = a.status === "done";
   return head(`${L.season} · mid-season`, "All-Star Weekend", done ? "The weekend is in the books." : "The league's best, on one stage. Shoot your round if you have someone in the 3-Point Contest, then run the rest of the weekend.",
-    done ? `<button class="btn pri" data-go="#/game/${a.gid}?watch=1">▶ Watch the All-Star Game</button>` : `<button class="btn pri" data-act="as-run" ${L.derived.three_pending || S.ui.threeGame ? "disabled" : ""}>Run the weekend →</button>`) +
+    done ? `<button class="btn pri" data-go="#/game/${a.gid}">All-Star Game box score</button>` : `<button class="btn pri" data-act="as-run" ${L.derived.three_pending || S.ui.threeGame ? "disabled" : ""}>Run the weekend →</button>`) +
     (done ? `<section class="slab glow hero" style="margin-bottom:16px"><div class="row">${U.logo(teams[1], 64)}<span class="big-num">${a.score[1]}</span><span class="mute">–</span><span class="big-num">${a.score[0]}</span>${U.logo(teams[0], 64)}</div>
       <div><div class="kicker">All-Star Game MVP</div>${playerLine(a.mvp)}</div><div><button class="btn" data-go="#/game/${a.gid}">Box score</button></div></section>` : "") +
     `<div class="grid g2" style="margin-bottom:16px">${[0, 1].map((i) => U.slab(`Team ${teams[i].name}`, a.teams[i].map((pid) => playerLine(pid)).join(""), { right: U.logo(teams[i], 26) })).join("")}</div>

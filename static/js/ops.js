@@ -311,7 +311,7 @@ async function openNego(pid, kind) {
   try {
     const st = (await actLite("nego_open", { pid, kind })).nego;
     NEGO = { pid, kind, state: st, result: null };
-    modal(negoHTML(), "sm");
+    modal(negoHTML(), "sm", "nego");
   } catch (e) { U.toast(e.message, true); }
 }
 ACT["nego"] = (el) => openNego(+el.dataset.pid, el.dataset.kind);
@@ -326,7 +326,7 @@ ACT["nego-offer"] = async (el) => {
     NEGO.sal = r.counter ? r.counter.sal : sal;
     NEGO.yrs = yrs;
     if (r.status === "accept") { await loadState(); hooks.render(); }
-    modal(negoHTML(), "sm");
+    modal(negoHTML(), "sm", "nego");
   } catch (e) { U.toast(e.message, true); el.disabled = false; }
 };
 ACT["nego-close"] = () => { NEGO = null; closeModal(); };
@@ -347,11 +347,11 @@ function offseason() {
       ${U.slab(`Re-sign your players · ${resign.length}`, resign.length ? resign.map((p) => `<div class="offer"><div class="row">${U.ovrBadge(p)}${U.pname(p, me(), `${p.pos} · age ${p.age} · ${p.trait || p.arch}`)}<span class="sp"></span>${U.moodChip(p)}</div>
           <div class="row"><span class="label">Agent's ask</span><b class="mono acc">${U.money(p.ask?.sal || 0)} × ${p.ask?.yrs || 2}</b><span class="sp"></span>
           <button class="btn xs pri" data-act="nego" data-pid="${p.id}" data-kind="resign">Negotiate</button><button class="btn xs danger" data-act="release" data-pid="${p.id}">Let go</button></div></div>`).join("") + `<div class="dim" style="font-size:12px">You hold Bird rights, so re-signing is allowed even over the cap. Happy players negotiate more easily; furious ones won't talk at all. Anyone you don't re-sign leaves when you advance.</div>` : `<div class="empty">No expiring contracts</div>`)}
-      ${U.slab("Progression report", rep.length ? `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th class="l">Player</th><th>Age</th><th>Before</th><th>After</th><th>Δ</th></tr></thead><tbody>${rep.map((r) => { const d = r.after - r.before; return `<tr><td class="l">${U.pname(r.p, me(), null, false)}</td><td>${r.p.age}</td><td>${U.stars(r.before)}</td><td>${U.stars(r.after)}</td><td class="${d > 0 ? "delta-up" : d < 0 ? "delta-down" : ""}">${d > 0 ? "▲" + d + "★" : d < 0 ? "▼" + -d + "★" : "—"}</td></tr>`; }).join("")}</tbody></table></div>` : `<div class="empty">—</div>`)}
+      ${U.slab("Progression report", rep.length ? `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th class="l">Player</th><th>Age</th><th>Before</th><th>After</th><th>Δ</th></tr></thead><tbody>${rep.map((r) => { const d = Math.round((r.after - r.before) * 10) / 10; return `<tr><td class="l">${U.pname(r.p, me(), null, false)}</td><td>${r.p.age}</td><td>${U.stars(r.before, "", true)}</td><td>${U.stars(r.after, "", true)}</td><td class="${d > 0 ? "delta-up" : d < 0 ? "delta-down" : ""}">${d > 0 ? "▲" + d + "★" : d < 0 ? "▼" + -d + "★" : "—"}</td></tr>`; }).join("")}</tbody></table></div>` : `<div class="empty">—</div>`)}
     </div>
     <div class="grid g2">
       ${awardsSlab(h)}
-      ${U.slab(`Retirements · ${retired.length}`, retired.length ? retired.slice(0, 14).map((r) => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><b>${U.esc(r.name)}</b><span class="pos">${r.pos}</span><span class="label">age ${r.age}</span><span class="sp"></span><span class="mono">peak ${U.stars(r.peak)}</span></div>`).join("") : `<div class="empty">Nobody retired</div>`)}
+      ${U.slab(`Retirements · ${retired.length}`, retired.length ? retired.slice(0, 14).map((r) => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><b>${U.esc(r.name)}</b><span class="pos">${r.pos}</span><span class="label">age ${r.age}</span><span class="sp"></span><span class="mono">peak ${U.stars(r.peak, "", true)}</span></div>`).join("") : `<div class="empty">Nobody retired</div>`)}
     </div>
     <div class="dim" style="margin-top:16px;font-size:12px">Roster after expirations: ${n} players. Free agency is open: <a class="acc" href="#/fa">negotiate with free agents →</a></div>`;
 }

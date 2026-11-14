@@ -68,6 +68,8 @@ class GP:
         self.side = side
         self.slot = slot
         self.energy = 100.0
+        self.fm = 1.0             # fatigue multiplier, refreshed whenever energy changes (burn / rest)
+        self.risk = 0.00013 * (1 + (100 - p.get("dur", 75)) / 60)
         self.fouls = 0
         self.s = dict.fromkeys(STAT_KEYS, 0)
         self.z = {z: [0, 0] for z in ZONES}   # made, attempted per zone
@@ -84,10 +86,10 @@ class GP:
         self.hold_out = -1.0    # coach-locked on the bench until this elapsed time
 
     def fat(self):
-        return 0.80 + 0.20 * (self.energy / 100.0)
+        return self.fm
 
     def r(self, k):
-        return self.a[k] * self.fat()
+        return self.a[k] * self.fm
 
     def avail(self):
         return self.fouls < 6 and self.injured is None
@@ -118,6 +120,7 @@ class Team:
         self.zfga = dict.fromkeys(ZONES, 0)
         self.zfgm = dict.fromkeys(ZONES, 0)
         self.last_to = -999.0
+        self.next_sub = 0.0
 
     def lvl(self, k):
         return self.upg.get(k, 0)
@@ -297,6 +300,7 @@ class Game:
                     g.energy = max(15.0, g.energy - t * (0.045 + (100 - g.a["sta"]) * 0.0006) * drain_mult)
                 else:
                     g.energy = min(100.0, g.energy + t * rec)
+                g.fm = 0.80 + 0.002 * g.energy
         for team in self.T:
             team.mo *= 0.94 ** (t / 14)
         return t
@@ -392,17 +396,27 @@ class Game:
     def check_injuries(self):
         if self.exhibition:
             return
+        # one roll per possession against the combined risk of the ten players on the floor
+        r = self.rng.random()
+        if r >= 0.004:     # combined risk of ten players is always well under this; skip the detailed check
+            return
+        risks = []
         for team in self.T:
             med = team.lvl("medical")
             for g in team.on:
-                if g.injured:
-                    continue
-                if self.rng.random() < 0.00013 * (1 + (100 - g.p.get("dur", 75)) / 60) * (1 - 0.12 * med):
+                if not g.injured:
+                    risks.append((team, g, med, g.risk * (1 - 0.12 * med)))
+        if r >= sum(x[3] for x in risks):
+            return
+        for team, g, med, risk in risks:
+            r -= risk
+            if r < 0:
                     inj = wchoice(self.rng, INJURIES, [i[3] for i in INJURIES])
                     games = max(0, self.rng.randint(inj[1], inj[2]) - ((med + 1) // 2 if med else 0))
                     g.injured = {"type": inj[0], "games": games}
                     self.injuries.append((g.p, inj[0], games))
                     self.ev(team.side, "inj", f"{g.name} is down — {inj[0]}. He heads to the locker room.")
+                    return
 
     # ------------------------------------------------------------------ possession
     def possession(self, o, mode=None, putback=None):
@@ -783,6 +797,8 @@ class Game:
                 self.off = self.rng.randint(0, 1)
             self.ev(0, "q", f"Start of {'Q' + str(self.q) if self.q <= 4 else 'OT' + str(self.q - 4)}.")
         self.q_start = list(self.score)
+        for t in self.T:
+            t.next_sub = self.elapsed
         self.mode, self.pb = None, None
 
     def end_period(self):
@@ -808,7 +824,10 @@ class Game:
         if self.mode != "putback":
             self.ai_timeouts()
             for t in self.T:
-                self.subs(t)
+                # lineups are re-evaluated at dead-ball intervals (~24s), or at once if someone can't play
+                if self.elapsed >= t.next_sub or any(not g.avail() for g in t.on):
+                    self.subs(t)
+                    t.next_sub = self.elapsed + 24
         self.off, self.mode, self.pb = self.possession(self.off, self.mode, self.pb)
         self.check_injuries()
         self.flow.append((round(self.elapsed), self.score[0] - self.score[1]))

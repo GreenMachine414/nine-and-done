@@ -103,7 +103,7 @@ export function openPlayer(pid) {
       </div>
       <div class="label" style="margin:22px 0 6px">Career stats</div>
       ${statRows ? `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th class="l">Season</th><th class="l">Tm</th><th>GP</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>STL</th><th>BLK</th><th>FG%</th><th>3P%</th><th>FT%</th></tr></thead><tbody>${statRows}</tbody></table></div>` : `<div class="empty">No games played yet</div>`}
-    </div>`);
+    </div>`, "", `p:${p.id}`);
 }
 
 ACT["talk"] = async (el) => {

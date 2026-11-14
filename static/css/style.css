@@ -741,3 +741,15 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
   .tabs { overflow-x: auto; scrollbar-width: none; }
   .tabs button { flex: none; padding: 10px 10px; }
 }
+
+.stars .snum { font: 700 11px var(--mono); color: var(--txt); margin-left: 6px; align-self: center; }
+.stars.lg .snum { font-size: 15px; }
+.stars.pot .snum { color: #d9f39b; }
+
+/* ===================================================================== action progress */
+body.waiting { cursor: progress; }
+body.waiting .view, body.waiting .theater { pointer-events: none; }
+.busybar { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 95; overflow: hidden; background: rgba(255,255,255,.04); }
+.busybar i { position: absolute; top: 0; bottom: 0; width: 35%; background: linear-gradient(90deg, transparent, var(--acc), transparent); animation: busyslide .8s ease-in-out infinite; }
+.busybar span { position: fixed; top: 10px; right: 14px; font: 700 9.5px var(--mono); letter-spacing: .25em; color: var(--acc); background: rgba(5,6,8,.85); padding: 4px 8px; }
+@keyframes busyslide { from { left: -35%; } to { left: 100%; } }
