@@ -42,7 +42,7 @@ window.addEventListener("hashchange", () => { document.body.classList.remove("me
 ACT["menu"] = () => document.body.classList.toggle("menu-open");
 
 const NAV = [
-  ["hub", "Hub"], ["roster", "Roster"], ["schedule", "Schedule"], ["standings", "Standings"], ["rankings", "Rankings"],
+  ["hub", "Hub"], ["roster", "Roster"], ["schedule", "Schedule"], ["standings", "Standings"],
   ["stats", "Stats"], ["awards", "Award Race"],
   ["allstar", "All-Star"], ["playoffs", "Playoffs"], ["draft", "Draft"], ["trade", "Trades"], ["fa", "Free Agency"],
   ["offseason", "Offseason"], ["franchise", "Franchise"], ["teams", "League"], ["history", "History"],
@@ -80,7 +80,7 @@ function shell(content, current) {
     roster: L.players && Object.values(L.players).some((p) => p.tid === L.user && p.treq) ? "!" : "",
   };
   const asNow = L.allstar && L.allstar.s === L.season;
-  const nav = NAV.filter(([k]) => !(k === "offseason" && L.phase !== "offseason") && !(k === "playoffs" && !L.playoffs && !L.history.length) && !(k === "allstar" && !asNow && !(L.allstar_hist || []).length) && !(k === "rankings" && !L.settings?.committee))
+  const nav = NAV.filter(([k]) => !(k === "offseason" && L.phase !== "offseason") && !(k === "playoffs" && !L.playoffs && !L.history.length) && !(k === "allstar" && !asNow && !(L.allstar_hist || []).length))
     .map(([k, l], i) => `<a class="nav-item ${current === k ? "on" : ""}" href="#/${k}"><span class="n">${String(i + 1).padStart(2, "0")}</span>${l}${badge[k] ? `<span class="pip">${badge[k]}</span>` : ""}</a>`).join("");
   return `<div class="shell">
     <aside class="rail">
@@ -104,7 +104,7 @@ function shell(content, current) {
 }
 
 /// ------------------------------------------------------------------ landing
-const NEW = { team: 0, start: "classic", name: "", teams: 10, conf: false, committee: false };
+const NEW = { team: 0, start: "classic", name: "" };
 let SAVES = null;
 let META = null;
 
@@ -131,17 +131,15 @@ function drawLanding() {
     if (panel) panel.scrollTop = panelScroll;
     window.scrollTo(0, pageScroll);
   });
-  const fmt = NEW.committee
-    ? "A selection committee ranks teams every week and picks the four playoff teams."
-    : "The top four teams by record make the playoffs.";
+
   root.innerHTML = `<div class="landing">
     <div class="landing-left">
       <div><div class="kicker">Basketball dynasty simulator</div>
         <div class="mega">Nine<br><span class="amp">&amp;</span> <span class="o">Done</span></div>
-        <p class="dim" style="max-width:520px;font-size:16px;margin-top:26px">You're the owner, the GM and the coach. Draft, scout, negotiate and develop a roster, then survive a nine-game sprint and a best-of-five playoff bracket.</p>
+        <p class="dim" style="max-width:520px;font-size:16px;margin-top:26px">You're the owner, the GM and the coach. Draft, scout, negotiate and develop a roster, then survive a nine-game sprint and an eight-team playoff bracket.</p>
       </div>
       <div class="row wrap" style="gap:28px;margin-top:40px">
-        ${[["10–20", "franchises"], ["9", "game seasons"], ["BO5", "playoff series"], ["1–5★", "player ratings"]].map(([a, b]) => `<div><div class="big-num">${a}</div><div class="label" style="margin-top:6px">${b}</div></div>`).join("")}
+        ${[["20", "franchises"], ["9", "game seasons"], ["8", "playoff teams"], ["1–5★", "player ratings"]].map(([a, b]) => `<div><div class="big-num">${a}</div><div class="label" style="margin-top:6px">${b}</div></div>`).join("")}
       </div>
     </div>
     <div class="landing-right">
@@ -159,10 +157,7 @@ function drawLanding() {
       <div class="slab" style="--cut:10px;padding:6px 16px">
         <div class="setup-row"><span style="font-weight:700">Rosters</span>${U.seg("nl-start", NEW.start, [["classic", "Pre-built + rookie draft"], ["fantasy", "Fantasy draft"]])}
           <div class="hint">${NEW.start === "fantasy" ? "Every player goes into one pool. Build from nothing over a 13-round snake draft." : "Teams start with balanced rosters. The season opens with a two-round rookie draft."}</div></div>
-        <div class="setup-row"><span style="font-weight:700">Teams</span>${U.seg("nl-teams", String(NEW.teams), [10, 12, 14, 16, 18, 20].map((n) => [String(n), String(n)]))}
-          <div class="hint">Four teams make the playoffs: semifinals and Finals, both best-of-five.</div></div>
-        <div class="setup-row"><span style="font-weight:700">Selection committee</span><div class="row"><div class="toggle ${NEW.committee ? "on" : ""}" data-act="nl-toggle" data-k="committee"></div><span class="dim" style="font-size:12.5px">${NEW.committee ? "CFP-style rankings" : "Standings decide"}</span></div>
-          <div class="hint">${fmt}</div></div>
+        <div class="setup-row"><span style="font-weight:700">League</span><span class="dim" style="font-size:12.5px">All 20 franchises, 9-game season. The top 8 make the playoffs: best-of-three quarterfinals and semifinals, then a best-of-five Finals.</span></div>
       </div>
       <div class="label" style="margin:22px 0 10px">League name</div>
       <input id="lg-name" style="width:100%" placeholder="Nine & Done League" value="${U.esc(NEW.name)}">
@@ -172,7 +167,6 @@ function drawLanding() {
 ACT["pick-team"] = (el) => { NEW.team = +el.dataset.i; drawLanding(); };
 ACT["nl-toggle"] = (el) => { NEW[el.dataset.k] = !NEW[el.dataset.k]; drawLanding(); };
 SEG["nl-start"] = (v) => { NEW.start = v; drawLanding(); };
-SEG["nl-teams"] = (v) => { NEW.teams = +v; drawLanding(); };
 ACT["open-save"] = async (el, e) => {
   if (e.target.closest("[data-act='del-save']")) return;
   S.sid = +el.dataset.id; localStorage.setItem("nd_sid", S.sid);
@@ -190,7 +184,7 @@ ACT["create-league"] = async () => {
   const name = document.getElementById("lg-name").value.trim();
   root.innerHTML = `<div class="loader">GENERATING LEAGUE</div>`;
   try {
-    const r = await api("saves", { name, team: NEW.team, settings: { teams: NEW.teams, committee: NEW.committee, start: NEW.start } });
+    const r = await api("saves", { name, team: NEW.team, settings: { start: NEW.start } });
     S.sid = r.id; localStorage.setItem("nd_sid", S.sid);
     SAVES = null;
     await boot("#/draft");

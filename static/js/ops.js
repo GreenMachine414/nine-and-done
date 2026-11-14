@@ -79,6 +79,7 @@ function draft() {
     const log = L.derived.draft_log;
     return head("Scouting department", "Draft Room", `The ${L.season + 1} class gets drafted at the start of next season. Spend scouting points to uncover hidden attributes and narrow each prospect's rating and potential ranges.`, scoutBar()) +
       (log ? U.slab(`${L.derived.draft_log_season} draft results`, orderStrip(log, null)) + `<div style="height:16px"></div>` : "") +
+      (L.lottery && L.lottery.season === L.season + 1 ? U.slab(`${L.season + 1} draft order · set by the lottery`, lotteryTable(L.lottery)) + `<div style="height:16px"></div>` : "") +
       U.slab(`${L.season + 1} big board · ${next.length} prospects`, prospectsTable(next, false, false));
   }
   const d = L.draft, oc = L.derived.on_clock, slot = d.order[d.cur], mine = oc === L.user;
@@ -343,6 +344,7 @@ function offseason() {
   return head(`${L.season} → ${L.season + 1}`, "Offseason HQ", "Players aged a year: the young ones developed and the veterans slowed down. Lock in your core before free agency opens to everyone.",
     `<button class="btn pri lg" data-act="advance">Advance to ${L.season + 1} draft →</button>`) +
     `<section class="slab hero" style="margin-bottom:16px">${U.logo(T(h.champ), 96)}<div><div class="kicker">${h.s} champions</div><div class="hero-name" style="font-size:34px">${U.esc(T(h.champ).city)} ${U.esc(T(h.champ).name)}</div><div class="dim" style="margin-top:8px">Your season: <b>${h.user.w}-${h.user.l}</b> · ${h.user.res}</div></div><div class="trophy"><div class="cup">🏆</div></div></section>
+    <div class="grid g2" style="margin-bottom:16px">${lotterySlab()}${optionsSlab()}</div>
     <div class="grid g2" style="margin-bottom:16px">
       ${U.slab(`Re-sign your players · ${resign.length}`, resign.length ? resign.map((p) => `<div class="offer"><div class="row">${U.ovrBadge(p)}${U.pname(p, me(), `${p.pos} · age ${p.age} · ${p.trait || p.arch}`)}<span class="sp"></span>${U.moodChip(p)}</div>
           <div class="row"><span class="label">Agent's ask</span><b class="mono acc">${U.money(p.ask?.sal || 0)} × ${p.ask?.yrs || 2}</b><span class="sp"></span>
@@ -356,6 +358,38 @@ function offseason() {
     <div class="dim" style="margin-top:16px;font-size:12px">Roster after expirations: ${n} players. Free agency is open: <a class="acc" href="#/fa">negotiate with free agents →</a></div>`;
 }
 
+
+// ---------------------------------------------------------------- lottery day + team options
+export function lotteryTable(lot) {
+  const L = S.L;
+  const lotto = new Map((lot.lottery || []).map((x) => [x.tid, x]));
+  return `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th class="l">Pick</th><th class="l">Team</th><th>Seed</th><th>Odds (#1)</th><th></th></tr></thead><tbody>
+    ${lot.order.map((tid, i) => { const x = lotto.get(tid); const mv = x ? x.seed - x.pick : 0;
+      return `<tr class="${tid === L.user ? "me" : ""} ${i === 3 ? "cutline" : ""}"><td class="l mono acc">#${i + 1}</td><td class="l">${U.tlink(T(tid), 20, true)}</td><td>${x ? x.seed : "playoffs"}</td><td>${x ? x.odds + "%" : "—"}</td>
+        <td>${mv > 0 ? `<span class="chip good">▲${mv}</span>` : mv < 0 ? `<span class="chip bad">▼${-mv}</span>` : ""}</td></tr>`; }).join("")}
+  </tbody></table></div><div class="dim" style="font-size:12px;margin-top:8px">Round 2 follows the same order. Traded picks belong to their new owners.</div>`;
+}
+function lotterySlab() {
+  const L = S.L, nxt = L.season + 1;
+  const lot = L.lottery && L.lottery.season === nxt ? L.lottery : null;
+  if (lot) {
+    const mine = lot.order.indexOf(L.user) + 1;
+    return U.slab(`${nxt} draft lottery · results`, `<div class="row" style="margin-bottom:10px"><span class="label">Your pick</span><b class="big-num" style="font-size:24px">#${mine}</b></div>${lotteryTable(lot)}`);
+  }
+  return U.slab(`${nxt} draft lottery`, `<p class="dim" style="margin-top:0">The 12 teams that missed the playoffs are in the lottery, worst record first. Four picks are drawn; everyone else slots in by record, and the 8 playoff teams pick last. Hold it now to see the order before free agency and the draft.</p>
+    <button class="btn pri lg" data-act="lottery">🎱 Hold the draft lottery</button>`, { cls: "glow" });
+}
+function optionsSlab() {
+  const L = S.L;
+  const opts = (L.options || []).map(Pl).filter(Boolean);
+  if (!opts.length) return U.slab("Team options", `<div class="empty">No team options to decide this offseason.</div><div class="dim" style="font-size:12px">Every drafted player's rookie deal ends with a +1 year team option.</div>`);
+  return U.slab(`Team options · ${opts.length}`, opts.map((p) => `<div class="offer"><div class="row">${U.ovrBadge(p)}${U.pname(p, me(), `${p.pos} · age ${p.age}`)}</div>
+    <div class="row"><span class="label">Option year</span><b class="mono acc">1 yr / ${U.money(Math.max(1.1, Math.round(p.contract.sal * 1.15 * 10) / 10))}</b><span class="sp"></span>
+    <button class="btn xs pri" data-act="team-opt" data-pid="${p.id}" data-x="1">Exercise</button><button class="btn xs danger" data-act="team-opt" data-pid="${p.id}" data-x="0">Decline</button></div></div>`).join("") +
+    `<div class="dim" style="font-size:12px">Exercising keeps him one more year at 115% of his rookie salary. Declining makes him a normal expiring contract you can try to re-sign. Undecided options are exercised automatically when you advance.</div>`);
+}
+ACT["lottery"] = () => act("lottery", {}, { label: "LOTTERY NIGHT" });
+ACT["team-opt"] = (el) => act("team_option", { pid: +el.dataset.pid, exercise: el.dataset.x === "1" }, { label: "SAVING" });
 
 ACT["resign"] = async (el) => {
   const yrs = document.querySelector(`select[data-ryrs="${el.dataset.pid}"]`)?.value;

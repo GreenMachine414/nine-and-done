@@ -89,7 +89,7 @@ export function openPlayer(pid) {
     </div>
     <div class="modal-body">
       <div class="grid g4" style="margin-bottom:18px">
-        <div class="stat-tile"><div class="label">Contract</div><div class="v" style="font-size:18px">${p.contract ? `${U.money(p.contract.sal)} <span class="mute" style="font-size:12px">× ${p.contract.yrs}y</span>` : p.ask ? `<span class="dim" style="font-size:14px">asks ${U.money(p.ask.sal)}</span>` : "—"}</div></div>
+        <div class="stat-tile"><div class="label">Contract</div><div class="v" style="font-size:18px">${p.contract ? `${U.money(p.contract.sal)} <span class="mute" style="font-size:12px">× ${p.contract.yrs}y${p.contract.opt ? " + team option" : ""}</span>` : p.ask ? `<span class="dim" style="font-size:14px">asks ${U.money(p.ask.sal)}</span>` : "—"}</div></div>
         <div class="stat-tile"><div class="label">Trade value</div><div class="v" style="font-size:18px">${p.tv ?? "—"}</div></div>
         <div class="stat-tile"><div class="label">Drafted</div><div class="v" style="font-size:14px">${p.draft ? `${p.draft.s} · R${p.draft.rd} #${p.draft.no} (${T(p.draft.tid).abbr})` : "Undrafted"}</div></div>
         <div class="stat-tile"><div class="label">Rating trend</div><div style="margin-top:6px">${U.sparkline(p.hist.map((h) => h.ovr), 150, 30)}</div></div>

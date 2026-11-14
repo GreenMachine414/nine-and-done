@@ -92,6 +92,7 @@ class Store:
         self.db = _Postgres(url) if url else _SQLite(path)
         self.kind = self.db.kind
         self.lock = threading.RLock()
+        self._reset_if_old()
         self.cache = OrderedDict()   # sid -> (owner, league)
         # write-behind: league saves are serialized immediately, written to the DB by a background thread
         self.pending = {}            # sid -> (meta tuple, json text)
@@ -140,6 +141,19 @@ class Store:
                 # only drop it if nothing newer was queued while we were writing
                 if self.pending.get(sid, (None, None))[1] is text:
                     del self.pending[sid]
+
+    DATA_VERSION = "5"   # bump to wipe every saved league (done for the 20-team / 8-team-playoff update)
+
+    def _reset_if_old(self):
+        self.db.run("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)")
+        row = self.db.run("SELECT v FROM meta WHERE k = ?", ("data_version",), fetch="one")
+        if row and row[0] == self.DATA_VERSION:
+            return
+        self.db.run("DELETE FROM games")
+        self.db.run("DELETE FROM saves")
+        self.db.run("INSERT INTO meta (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v",
+                    ("data_version", self.DATA_VERSION))
+        print(f"store: cleared all leagues for data version {self.DATA_VERSION}", flush=True)
 
     # ---------------------------------------------------------------- helpers
     def _meta(self, L):

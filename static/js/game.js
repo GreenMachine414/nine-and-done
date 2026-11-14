@@ -80,7 +80,7 @@ function quarterTable() {
 
 function label(doc) {
   if (doc.allstar) return `${doc.s} All-Star Game`;
-  if (doc.po) return `${doc.series === "F" ? "The Finals" : "Semifinals"}${doc.gid?.includes("-g") ? " · Game " + doc.gid.split("-g")[1] : ""}`;
+  if (doc.po) return `${doc.series === "F" ? "The Finals" : String(doc.series || "").startsWith("R2") ? "Semifinals" : "Quarterfinals"}${doc.gid?.includes("-g") ? " · Game " + doc.gid.split("-g")[1] : ""}`;
   return `${doc.s} regular season · Day ${(doc.day ?? 0) + 1}`;
 }
 

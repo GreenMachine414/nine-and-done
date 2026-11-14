@@ -250,6 +250,7 @@ def generate(rng, pid, target_ovr, age, pos=None, used_names=None, season=0):
         "tid": -1, "stats": {}, "hist": [], "inj": None,
         "contract": None, "draft": None, "awards": [],
         "trait": roll_trait(rng), "morale": int(clamp(rng.gauss(68, 8), 45, 90)), "mlog": [],
+        "decline_age": rng.choice([30, 31, 32]),
     })
     ovr = calc_ovr(p)
     if age <= 20:
@@ -271,7 +272,7 @@ def generate(rng, pid, target_ovr, age, pos=None, used_names=None, season=0):
 SCOUT_MAX_STEP = 4
 
 
-def scout_report(p, step, scouting=0):
+def scout_report(p, step, scouting=0, salt=0):
     """Fog-of-war view of a prospect for a team with `step` scouting visits and the given scouting upgrade.
     Returns display-scale ranges for OVR/POT and only the attributes uncovered so far."""
     r = random.Random(p["id"] * 7919 + 17)
@@ -280,7 +281,7 @@ def scout_report(p, step, scouting=0):
     step = max(0, min(SCOUT_MAX_STEP, step))
     # Where the true value sits inside each range is uniformly random, edges included, and re-drawn at every
     # scouting step, so successive reports can't be compared to back out the exact rating.
-    rs = random.Random(p["id"] * 104729 + step * 7907 + 3)
+    rs = random.Random(p["id"] * 104729 + step * 7907 + salt * 15485863 + 3)   # each team's scouts differ
     f_o, f_p = rs.random(), rs.random()
     n_known = min(len(ATTRS), 4 + scouting + 3 * step)
     known = {k: p["a"][k] for k in order[:n_known]}
@@ -303,57 +304,83 @@ def fuzz_pot(p, scouting=0):
     return [max(p["ovr"], center - spread), min(99, center + spread)]
 
 
-def develop(p, rng, bonus=0.0, decline_cut=0.0):
+STAR_RAW = 1 / 0.08     # raw rating points per 1.0 star (see stars_for)
+
+
+DECLINE_STARS = 0.12   # constant yearly drop once a player reaches his decline age
+
+
+def develop(p, rng, bonus=0.0, decline_cut=0.0, perf=0.0):
     """Offseason progression / regression. Mutates p. Returns ovr delta.
     bonus: extra growth points for young players (dev upgrade, mentors, gym rats, morale).
-    decline_cut: 0..1 fraction of age decline removed (dev upgrade)."""
+    decline_cut: -0.3..0.3 fraction of the age decline removed (dev upgrade vs league average).
+    perf: -1..1, last season's performance vs players of the same rating (from league.performance_scores).
+    Before his decline age (30, 31 or 32) a player follows the normal age curve with its usual random swing.
+    From his decline age on, each year is exactly: a constant decline (DECLINE_STARS) + a random +/-0.15 stars
+    + up to +/-0.15 stars for last season's performance. A great year can still mean a tiny gain."""
     before = p["ovr"]
     age = p["age"]
-    if age <= 20:
-        m = 4.0
-    elif age <= 22:
-        m = 3.0
-    elif age <= 24:
-        m = 1.7
-    elif age <= 26:
-        m = 0.5
-    elif age <= 28:
-        m = -0.4
-    elif age <= 30:
-        m = -1.4
-    elif age <= 32:
-        m = -2.8
-    elif age <= 34:
-        m = -4.2
-    else:
-        m = -5.8
-    gap = p["pot"] - p["ovr"]
-    if m > 0:
-        m *= 0.3 + min(1.15, max(0, gap) / 8)
-    # harder to keep climbing near the top of the league
-    if m > 0 and p["ovr"] >= 80:
-        m *= 0.6
-    if m < 0:
-        m *= (1 - decline_cut)
-    if age <= 25:
-        m += bonus
-    else:
-        m += bonus * 0.4
-    m += rng.gauss(0, 1.8)
-    if m > 0 and gap <= 0:
-        m *= 0.25
+    dage = p.get("decline_age") or 31
     a = p["a"]
-    for k in ATTRS:
-        w = 1.0
-        if k in ("ath", "sta"):
-            w = 0.5 if m > 0 else 1.7
-            if age >= 29:
-                a[k] -= rng.uniform(0.5, 2.0)
-        elif k == "iq":
-            w = 0.7 if m > 0 else 0.0
-            if age >= 25:
-                a[k] += rng.uniform(0, 1.5)
-        a[k] += m * w + rng.gauss(0, 1.1)
+    if age >= dage:
+        m = -DECLINE_STARS * STAR_RAW * (1 - decline_cut)
+        m += rng.uniform(-0.15, 0.15) * STAR_RAW
+        m += max(-1.0, min(1.0, perf)) * 0.15 * STAR_RAW
+        target = before + m
+        for k in ATTRS:   # bodies go first: athleticism and stamina carry more of the change, IQ less
+            w = 1.6 if k in ("ath", "sta") else 0.4 if k == "iq" else 1.0
+            a[k] += m * w + rng.gauss(0, 0.4)
+        refresh(p)
+        wts = WEIGHTS[p["pos"]]
+        ceil = CEIL[p["pos"]]
+        want = int(round(target))
+        for _ in range(40):   # land the overall exactly on the target (attributes are whole numbers)
+            if p["ovr"] == want:
+                break
+            d = 1 if p["ovr"] < want else -1
+            ok = [k for k in ATTRS if (a[k] < ceil[k] if d > 0 else a[k] > 20)]
+            if not ok:
+                break
+            k = max(ok, key=lambda k: wts[k] * (0.6 + rng.random()))
+            a[k] += d
+            p["ovr"] = calc_ovr(p)
+    else:
+        if age <= 20:
+            m = 4.0
+        elif age <= 22:
+            m = 3.0
+        elif age <= 24:
+            m = 1.7
+        elif age <= 26:
+            m = 0.5
+        elif age <= 28:
+            m = -0.4
+        elif age <= 30:
+            m = -1.4
+        else:
+            m = -2.8
+        gap = p["pot"] - p["ovr"]
+        if m > 0:
+            m *= 0.3 + min(1.15, max(0, gap) / 8)
+        if m > 0 and p["ovr"] >= 80:          # harder to keep climbing near the top of the league
+            m *= 0.6
+        if m < 0:
+            m *= (1 - decline_cut)
+        m += bonus if age <= 25 else bonus * 0.4
+        m += rng.gauss(0, 1.8)
+        if m > 0 and gap <= 0:
+            m *= 0.25
+        for k in ATTRS:
+            w = 1.0
+            if k in ("ath", "sta"):
+                w = 0.5 if m > 0 else 1.7
+                if age >= 29:
+                    a[k] -= rng.uniform(0.5, 2.0)
+            elif k == "iq":
+                w = 0.7 if m > 0 else 0.0
+                if age >= 25:
+                    a[k] += rng.uniform(0, 1.5)
+            a[k] += m * w + rng.gauss(0, 1.1)
     refresh(p)
     if p["age"] >= 26:
         p["pot"] = max(p["ovr"], min(p["pot"], p["ovr"] + max(0, 29 - p["age"])))

@@ -185,7 +185,7 @@ def scout(L, pid):
                            f"per game day.")
     sc["pts"] -= cost
     sc["lv"][str(pid)] = step + 1
-    return P.scout_report(p, step + 1, lvl(L, "scouting"))
+    return P.scout_report(p, step + 1, lvl(L, "scouting"), salt=L["user"])
 
 
 # ======================================================================= UNTOUCHABLES

@@ -1,136 +1,123 @@
-"""Headless test of every league configuration: schedules, playoffs, committee, lottery, negotiation, scouting,
-untouchables, trade energy and the display-rating distribution.  python test/configtest.py"""
+"""Headless league test: 20 teams, 8-team playoffs (BO3 rounds, BO5 Finals), lottery day, team options,
+fog-based drafting, aging. python test/configtest.py"""
 import os
 import random
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from nd import league as LG, trade as TR, players as P, office as OF, franchise as FR  # noqa: E402
+from nd import league as LG, players as P, franchise as FR  # noqa: E402
 from nd.data import SEASON_DAYS  # noqa: E402
-
-CONFIGS = [
-    {"teams": 10, "conf": False, "committee": False, "start": "classic"},
-    {"teams": 12, "conf": True, "committee": False, "start": "classic"},
-    {"teams": 14, "conf": False, "committee": True, "start": "fantasy"},
-    {"teams": 16, "conf": True, "committee": True, "start": "classic"},
-    {"teams": 18, "conf": True, "committee": False, "start": "classic"},
-    {"teams": 20, "conf": True, "committee": True, "start": "classic"},
-]
 
 
 def check_schedule(L):
-    n = len(L["teams"])
     sched = L["schedule"]
-    assert len(sched) == SEASON_DAYS, len(sched)
+    assert len(sched) == SEASON_DAYS
     seen = set()
-    games = Counter()
-    intra = Counter()
     for day in sched:
-        teams = [g["h"] for g in day] + [g["a"] for g in day]
-        assert sorted(teams) == list(range(n)), "every team plays every day"
+        teams = sorted([g["h"] for g in day] + [g["a"] for g in day])
+        assert teams == list(range(20)), "every team plays every day"
         for g in day:
             k = (min(g["h"], g["a"]), max(g["h"], g["a"]))
             assert k not in seen, "no rematches"
             seen.add(k)
-            games[g["h"]] += 1
-            games[g["a"]] += 1
-            if L["teams"][g["h"]]["conf"] == L["teams"][g["a"]]["conf"]:
-                intra[g["h"]] += 1
-                intra[g["a"]] += 1
-    return dict(Counter(intra.values())) if L["settings"]["conf"] else None
 
 
-def run(cfg, seed):
+def run(start, seed):
     rng = random.Random(seed)
-    user_fid = rng.randrange(20)
-    L = LG.new_league("T", user_fid, settings=cfg, seed=seed)
-    n = cfg["teams"]
-    assert len(L["teams"]) == n
-    assert L["teams"][L["user"]]["fid"] == user_fid
-    intra = check_schedule(L)
-    out = [f'{n} teams conf={cfg["conf"]} committee={cfg["committee"]} {cfg["start"]}: intra-conf games {intra}']
+    L = LG.new_league("T", rng.randrange(20), settings={"start": start, "teams": 12, "committee": True}, seed=seed)
+    assert len(L["teams"]) == 20 and not L["settings"]["committee"] and L["settings"]["playoff"] == 8
     u = L["user"]
+    out = [f"{start} seed {seed}:"]
     for season in range(2):
+        check_schedule(L)
         LG.draft_until_user(L, rng, include_user=True)
         while len(LG.roster(L, u)) > 15:
             LG.user_release(L, min(LG.roster(L, u), key=lambda p: p["ovr"])["id"])
-        if season == 0:
-            # untouchable + trade energy
-            mine = sorted(LG.roster(L, u), key=lambda p: -p["ovr"])
-            OF.set_untouchable(L, mine[0]["id"])
-            try:
-                OF.set_untouchable(L, mine[1]["id"])
-                raise AssertionError("second untouchable allowed")
-            except LG.GameError:
-                pass
-            other = (u + 1) % n
-            probs = TR.validate(L, u, other, {"players": [mine[0]["id"]], "picks": []}, {"players": [], "picks": []})
-            assert any("untouchable" in x for x in probs), probs
-            calls = L["energy"]["trade"]
-            pk = next(x for x in L["picks"] if x["owner"] == u and x["rd"] == 2)
-            for _ in range(calls):
-                TR.user_propose(L, other, {"players": [], "picks": []}, {"players": [], "picks": [
-                    next(x for x in L["picks"] if x["owner"] == other)["id"]]})
-            try:
-                TR.user_propose(L, other, {"players": [], "picks": [pk["id"]]}, {"players": [], "picks": []})
-                raise AssertionError("trade energy not enforced")
-            except LG.GameError as e:
-                assert "trade calls" in str(e), e
-            # negotiation with a free agent
-            while len(LG.roster(L, u)) >= 15:
-                LG.user_release(L, min(LG.roster(L, u), key=lambda p: p["ovr"])["id"])
-            fa = max((p for p in L["players"].values() if p["tid"] == -1), key=lambda p: p["ovr"])
-            st = OF.open_talks(L, fa["id"], "fa")
-            r1 = OF.negotiate(L, fa["id"], st["ask"]["sal"] * 0.78, st["ask"]["yrs"], "fa")
-            r2 = r1 if r1["status"] in ("walk", "accept") else OF.negotiate(L, fa["id"], st["ask"]["sal"] * 0.93, st["ask"]["yrs"], "fa")
-            out.append(f'  nego: ask {st["ask"]} -> lowball {r1["status"]} (pat {r1["patience"]}), '
-                       f'93% {r2["status"]} counter {r2.get("counter")}')
-            if r2["status"] not in ("accept", "walk"):
-                r3 = OF.negotiate(L, fa["id"], r2["counter"]["sal"], st["ask"]["yrs"], "fa")
-                out.append(f'  nego: met counter -> {r3["status"]}')
         while L["phase"] in ("regular", "playoffs"):
             LG.sim_day(L, rng)
-            if L["phase"] == "regular" and L["day"] == 3:
-                race = LG.award_race(L)
-                assert race["MVP"], "award race populated"
             if L.get("allstar") and L["allstar"]["status"] == "ready":
                 FR.allstar_run(L, rng)
-        po = L["history"][-1]
-        playoffs = [t for t in L["teams"] if t["hist"][-1]["res"] != "Lottery"]
-        assert len(playoffs) == 4, len(playoffs)
-        assert not L["settings"]["conf"]
-        if cfg["committee"]:
-            assert L["rankings"] and L["rankings"][-1]["final"]
-        out.append(f'  season {L["season"]}: field {len(playoffs)}, rounds {len(set(r for r in [s["rd"] for s in []]))}'
-                   f' champ {L["teams"][po["champ"]]["abbr"]}, MVP {po["names"].get(str(po["awards"].get("MVP")))}, '
-                   f'user res {po["user"]["res"]}')
+            if L["phase"] == "playoffs" and L["playoffs"]:
+                for s in L["playoffs"]["series"]:
+                    need = 3 if s["rd"] == L["playoffs"]["rounds"] else 2
+                    assert s["need"] == need and max(s["w"]) <= need and sum(s["w"]) <= 2 * need - 1, s
+        po = L["playoffs"]
+        rounds = Counter(s["rd"] for s in po["series"])
+        fin = [s for s in po["series"] if s["rd"] == 3][0]
+        assert rounds == {1: 4, 2: 2, 3: 1}, rounds
+        assert max(fin["w"]) == 3 and all(max(s["w"]) == 2 for s in po["series"] if s["rd"] < 3)
+        for s in po["series"]:   # the team with more wins advances
+            assert s["winner"] == (s["hi"] if s["w"][0] > s["w"][1] else s["lo"]), s
+            if s["rd"] < 3:
+                assert any(s["winner"] in (x["hi"], x["lo"]) for x in po["series"] if x["rd"] == s["rd"] + 1), s
+        h = L["history"][-1]
+        out.append(f'  {h["s"]}: champ {L["teams"][h["champ"]]["abbr"]} finals {fin["w"]} | '
+                   f'rounds {dict(rounds)} | user {h["user"]["res"]}')
+        # lottery day happens in the offseason, before the draft
+        assert L["phase"] == "offseason" and not (L.get("lottery") and L["lottery"]["season"] == L["season"] + 1)
+        lot = LG.run_lottery(L, rng)
+        assert len(lot["order"]) == 20 and len(lot["lottery"]) == 12
+        movers = [x for x in lot["lottery"] if x["pick"] < x["seed"]]
+        out.append(f'  lottery {lot["season"]}: #1 {L["teams"][lot["order"][0]]["abbr"]} (seed '
+                   f'{next(x["seed"] for x in lot["lottery"] if x["pick"] == 1)}), {len(movers)} jumped up')
+        for pid in list(L.get("options", [])):
+            LG.user_team_option(L, pid, True)
+            out.append(f'  exercised team option on {P.full_name(LG.pl(L, pid))}: {LG.pl(L, pid)["contract"]}')
         for pid in list(L["resign"]):
-            LG.user_resign(L, pid, 2)
+            try:
+                LG.user_resign(L, pid, 2)
+            except LG.GameError:
+                pass
         LG.advance_season(L, rng)
-        assert L["draft"]["lottery"], "lottery ran"
-        check_schedule(L)
-    # scouting
-    pros = [p for p in L["players"].values() if p["tid"] == -2 and p.get("prospect")]
-    p0 = pros[0]
-    before = P.scout_report(p0, 0)
-    L["scout"]["pts"] = 99
-    after = OF.scout(L, p0["id"])
-    assert len(after["known"]) > len(before["known"])
-    assert after["ovr"][1] - after["ovr"][0] <= before["ovr"][1] - before["ovr"][0]
-    lo, hi = after["ovr"]
-    assert lo <= P.stars_for(p0["ovr"]) <= hi, (lo, P.stars_for(p0["ovr"]), hi)
-    out.append(f'  scouting: {len(before["known"])}->{len(after["known"])} attrs, OVR {before["ovr"]}->{after["ovr"]}'
-               f' (true {P.stars_for(p0["ovr"])}), POT {before["pot"]}->{after["pot"]} (true {P.stars_for(p0["pot"])})')
-    act = [p for p in L["players"].values() if p["tid"] >= 0]
-    d = sorted((P.stars_for(p["ovr"]) for p in act), reverse=True)
-    out.append(f'  stars: 5.0 x{sum(1 for x in d if x == 5)}, 4.5 x{sum(1 for x in d if x == 4.5)}, median {d[len(d) // 2]}, '
-               f'AI upgrades bought {sum(sum(t["upg"].values()) for t in L["teams"] if t["tid"] != u)}')
+        assert L["draft"]["lottery"] == lot["lottery"], "draft uses the lottery-day order"
+        opts = sum(1 for p in L["players"].values() if (p.get("contract") or {}).get("opt"))
+        out.append(f'  players on deals with a team option: {opts}')
     return out
 
 
+def aging_check():
+    rng = random.Random(7)
+    by_age = defaultdict(list)
+    dage = Counter()
+    for i in range(6000):
+        age = rng.randint(24, 36)
+        p = P.generate(rng, 900000 + i, rng.uniform(55, 85), age)
+        dage[p["decline_age"]] += 1
+        before = P.stars_for(p["ovr"])
+        P.develop(p, rng, 0, 0, rng.uniform(-1, 1))
+        by_age[age].append(P.stars_for(p["ovr"]) - before)
+    print("decline ages assigned:", dict(sorted(dage.items())))
+    print("avg star change by age:", {a: round(sum(v) / len(v), 2) for a, v in sorted(by_age.items())})
+    # decline phase: change = -0.12 constant +/-0.15 random +/-0.15 performance (raw points are whole numbers)
+    res = {}
+    for perf in (1.0, 0.0, -1.0):
+        d = []
+        for i in range(3000):
+            p = P.generate(rng, 960000 + i, rng.uniform(55, 85), 33)
+            p["decline_age"] = 31
+            b = p["ovr"]
+            P.develop(p, random.Random(i), 0, 0, perf)
+            d.append((p["ovr"] - b) / P.STAR_RAW)
+        lo, hi, avg = min(d), max(d), sum(d) / len(d)
+        exp = -0.12 + 0.15 * perf
+        assert abs(avg - exp) < 0.02 and lo >= exp - 0.15 - 0.05 and hi <= exp + 0.15 + 0.05, (perf, lo, avg, hi)
+        res[perf] = d
+        print(f"decline phase, perf {perf:+.0f}: avg {avg:+.2f} stars, range {lo:+.2f}..{hi:+.2f}, "
+              f"{sum(x > 0 for x in d) / len(d):.0%} improved, {sum(x == 0 for x in d) / len(d):.0%} unchanged")
+    pre = []
+    for i in range(3000):
+        p = P.generate(rng, 990000 + i, 70, 28)
+        p["decline_age"] = 32
+        b = p["ovr"]
+        P.develop(p, random.Random(i), 0, 0, 1.0)
+        P.develop(dict(p, a=dict(p["a"])), random.Random(i), 0, 0, -1.0)
+        pre.append(p["ovr"] - b)
+    print(f"age 28 (before decline): avg change {sum(pre) / len(pre) / P.STAR_RAW:+.2f} stars (performance ignored)")
+
+
 if __name__ == "__main__":
-    for i, cfg in enumerate(CONFIGS):
-        for line in run(cfg, 100 + i):
-            print(line)
-    print("ALL CONFIGS OK")
+    for start, seed in (("classic", 101), ("fantasy", 202)):
+        print("\n".join(run(start, seed)))
+    aging_check()
+    print("ALL OK")

@@ -136,8 +136,8 @@ export function nextGame() {
     const s = L.playoffs.series.find((s) => s.winner === null && (s.hi === L.user || s.lo === L.user));
     if (!s) return null;
     const n = s.games.length;
-    const [home, away] = [0, 1, 4].includes(n) ? [s.hi, s.lo] : [s.lo, s.hi];
-    return { home, away, label: `${s.rd === 2 ? "Finals" : "Semifinals"} · Game ${n + 1} · Series ${s.hi === L.user ? s.w[0] : s.w[1]}-${s.hi === L.user ? s.w[1] : s.w[0]}` };
+    const [home, away] = ((s.need || 3) === 2 ? [0, 2] : [0, 1, 4]).includes(n) ? [s.hi, s.lo] : [s.lo, s.hi];
+    return { home, away, label: `${(L.playoffs.round_names || [])[s.rd - 1] || "Playoffs"} · Game ${n + 1} · Series ${s.hi === L.user ? s.w[0] : s.w[1]}-${s.hi === L.user ? s.w[1] : s.w[0]}` };
   }
   return null;
 }

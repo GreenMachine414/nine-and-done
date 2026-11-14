@@ -47,7 +47,7 @@ def view(L):
         # players are shown only as half-star ratings; raw numbers stay for sorting
         q["hist"] = [{**h, "st": P.stars_for(h["ovr"])} for h in p.get("hist", [])]
         if p["tid"] == -2 and p.get("prospect"):
-            rep = P.scout_report(p, L["scout"]["lv"].get(k, 0), sc_lvl)
+            rep = P.scout_report(p, L["scout"]["lv"].get(k, 0), sc_lvl, salt=L["user"])
             rep["cost"] = OF.scout_cost(L, p["id"])
             q.update({"fog": True, "scout": rep, "a": rep["known"], "tags": rep["tags"], "t": None, "tv": None,
                       "stars": round(sum(rep["ovr"]) / 2, 1), "pstars": round(sum(rep["pot"]) / 2, 1),
@@ -62,12 +62,7 @@ def view(L):
                                                             "after": P.stars_for(r["after"])}
                                                            for r in L["offseason"].get("report", [])]}
     out["retired"] = [{**r, "peak": P.stars_for(r["peak"])} for r in L.get("retired", [])]
-    # committee: only the playoff spots and the first two teams out are public; no formula details
-    if L.get("rankings"):
-        cut = (L["settings"].get("playoff") or 4) + 2
-        out["rankings"] = [{"day": r["day"], "final": r.get("final"), "order": r["order"][:cut],
-                            "prev": {str(t): (r["info"].get(str(t)) or {}).get("prev") for t in r["order"][:cut]}}
-                           for r in L["rankings"]]
+    out.pop("rankings", None)
     race = LG.award_race(L) if L["phase"] == "regular" and L["day"] >= 1 else {}
     race_out = {}
     for key, rows in race.items():
@@ -231,6 +226,12 @@ def act(sid, L, body):
         res["nego"] = OF.open_talks(L, int(body["pid"]), body.get("kind", "fa"))
     elif t == "negotiate":
         res["nego"] = OF.negotiate(L, int(body["pid"]), body.get("sal"), body.get("yrs"), body.get("kind", "fa"))
+    elif t == "lottery":
+        if L["phase"] != "offseason":
+            raise LG.GameError("The draft lottery is held during the offseason.")
+        res["lottery"] = LG.run_lottery(L, rng)
+    elif t == "team_option":
+        LG.user_team_option(L, int(body["pid"]), bool(body.get("exercise")))
     elif t == "scout":
         res["report"] = OF.scout(L, int(body["pid"]))
     elif t == "untouchable":

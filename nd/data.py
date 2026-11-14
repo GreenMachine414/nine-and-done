@@ -55,12 +55,15 @@ TEAMS = [
 ]
 
 CONFERENCES = ["Atlas", "Horizon"]
-VALID_TEAM_COUNTS = [10, 12, 14, 16, 18, 20]
+VALID_TEAM_COUNTS = [20]
 
 
-def playoff_size(n_teams):
-    """Every league sends 4 teams to the playoffs."""
-    return 4
+LEAGUE_TEAMS = 20         # every league has all 20 franchises
+
+
+def playoff_size(n_teams=LEAGUE_TEAMS):
+    """8 teams make the playoffs: best-of-three quarterfinals and semifinals, best-of-five Finals."""
+    return 8
 
 FIRST_NAMES = """Aaron Abdul Ade Adrian Ahmad Aiden Akira Alonzo Amari Andre Anton Ari Armand Augustin Bakari Bastian
 Beau Benedikt Bodhi Bram Brennan Caleb Callum Cam Cassius Cedric Chidi Cole Corbin Cruz Dalen Damari Dante Darius Davi

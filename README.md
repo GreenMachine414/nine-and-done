@@ -1,6 +1,6 @@
 # Nine & Done
 
-A basketball dynasty sim that runs in the browser. You're the owner, GM and coach. Each season is 9 games, the top 4 make the playoffs, and both rounds are best-of-five.
+A basketball dynasty sim that runs in the browser. You're the owner, GM and coach. Each league has 20 teams and a 9-game season. The top 8 make the playoffs: best-of-three quarterfinals and semifinals, then a best-of-five Finals.
 
 ## Run
 
@@ -12,10 +12,11 @@ The game opens at http://127.0.0.1:8777. It needs Python 3.10+ and uses only the
 
 ## Systems
 
-- **Custom leagues**: 10–20 teams (even numbers) and an optional CFP-style selection committee. Rosters start either pre-built or from a fantasy draft. Four teams make the playoffs (semifinals and Finals, both best-of-five).
-- **Selection committee**: private weekly rankings that weigh the resume (record, schedule strength, quality wins, bad losses and more). Only the top four and the first two teams out are published.
+- **League**: 20 teams. Rosters start either pre-built or from a fantasy draft. The top 8 by record make the playoffs (1v8, 4v5, 2v7, 3v6); ties go to head-to-head, then point differential.
+- **Offseason**: a lottery day (the 12 non-playoff teams; four picks drawn) sets the draft order before free agency and the draft. Every drafted player's rookie deal carries a +1 year team option, at 115% of the rookie salary.
+- **Aging**: each player has his own decline age (30, 31 or 32). Before it, players follow the normal age curve. From it on, each year is a constant -0.12★, plus a random ±0.15★, plus up to ±0.15★ for how he performed last season, so a great year can still bring a small gain.
 - **Ratings**: players and teams are shown only as 1.0–5.0 stars, to the nearest tenth (5.0 means essentially perfect). Individual attributes are still shown.
-- **Front office**: daily trade calls, one untouchable per season (AI teams sometimes name one too), contract negotiation with agent patience and counteroffers, and prospect scouting with fog of war (hidden attributes plus OVR/POT ranges narrowed with scouting points). Each of these is helped by an upgrade track.
+- **Front office**: daily trade calls, one untouchable per season (AI teams sometimes name one too), contract negotiation with agent patience and counteroffers, and prospect scouting with fog of war (hidden attributes plus star ranges narrowed with scouting points). Auto-picks, both yours and the AI teams', draft from what each team has scouted, not from true ratings. Each of these is helped by an upgrade track.
 - **Award race**: live ladders and finalists during the season. Voters add variance, and winners are revealed when the regular season ends.
 
 - **Live coaching** (🎙 Coach live on the Hub): the game is simulated in 45-second chunks while you coach. You can call timeouts, make subs, and change strategy from the clipboard. The game also pauses at quarter breaks, momentum runs, and close final possessions.
@@ -46,7 +47,7 @@ The game opens at http://127.0.0.1:8777. It needs Python 3.10+ and uses only the
 
 ```
 python test/simtest.py 3 classic   # headless seasons + realism stats
-python test/configtest.py          # every league size: schedules, playoffs, committee, negotiation, scouting
+python test/configtest.py          # schedules, 8-team playoffs, lottery day, team options, aging
 node test/mobiletest.mjs <saveId> <owner>   # phone emulation: overflow check + screenshots
 python test/apitest.py             # full API loop (server must be running)
 python test/livetest.py            # live coaching, upgrades, talks and All-Star weekend over HTTP
