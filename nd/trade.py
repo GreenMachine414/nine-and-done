@@ -101,6 +101,9 @@ def validate(L, a, b, give, get):
                 probs.append("A player in this deal is no longer on that roster.")
             elif pid in L.get("resign", []):
                 probs.append(f"{P.full_name(p)} is unsigned and can't be traded.")
+            elif LG.team(L, tid).get("untouch") == pid:
+                probs.append(f"{P.full_name(p)} is untouchable." + (" Remove the tag first." if tid == L["user"]
+                                                                    else " They won't discuss him."))
         for pkid in assets.get("picks", []):
             pk = next((x for x in L["picks"] if x["id"] == pkid), None)
             if not pk or pk["owner"] != tid:
@@ -161,7 +164,7 @@ def suggest_addition(L, other, give, get, shortfall, mode, ranks):
     u = L["user"]
     opts = []
     for p in LG.roster(L, u):
-        if p["id"] in give.get("players", []) or p["id"] in L.get("resign", []):
+        if p["id"] in give.get("players", []) or p["id"] in L.get("resign", []) or                 p["id"] == LG.team(L, u).get("untouch"):
             continue
         v = player_value(L, p, mode)
         if v >= shortfall:
@@ -232,6 +235,14 @@ def _move_draft_slot(L, pk, owner):
                 slot["tid"] = owner
 
 
+def use_trade_call(L):
+    e = L.setdefault("energy", {})
+    if e.get("trade", 0) <= 0:
+        raise LG.GameError(f"No trade calls left today — your front office gets {e.get('trade_max', 2)} per game "
+                           f"day (more with Front Office upgrades).")
+    e["trade"] -= 1
+
+
 def user_propose(L, other, give, get):
     other = int(other)
     if other == L["user"]:
@@ -239,6 +250,8 @@ def user_propose(L, other, give, get):
     ev = evaluate(L, other, give, get)
     if ev["problems"]:
         raise LG.GameError(ev["problems"][0])
+    use_trade_call(L)
+    ev["calls_left"] = L["energy"]["trade"]
     if ev["accept"]:
         execute(L, L["user"], other, give, get)
     return ev
@@ -252,6 +265,8 @@ def block_offers(L, rng=None):
         raise LG.GameError(why)
     blk = L["block"]
     give = {"players": list(blk["players"]), "picks": list(blk["picks"])}
+    if give["players"] or give["picks"]:
+        use_trade_call(L)
     if not give["players"] and not give["picks"]:
         raise LG.GameError("Put at least one player or pick on the trade block.")
     ranks = LG.strength_ranks(L)
@@ -270,7 +285,7 @@ def block_offers(L, rng=None):
         top = max(LG.roster(L, tid), key=lambda p: p["ovr"])
         cands = []
         for p in LG.roster(L, tid):
-            if p["id"] == top["id"] and mode == "contend":
+            if (p["id"] == top["id"] and mode == "contend") or p["id"] == t.get("untouch"):
                 continue
             cands.append(("p", p["id"], player_value(L, p, mode)))
         for pk in L["picks"]:

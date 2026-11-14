@@ -6,10 +6,9 @@ from .players import POS
 from .sim import Game, STAT_KEYS, DEFAULT_STRAT
 from . import franchise as FR
 from .data import (TEAMS, SALARY_CAP, HARD_APRON, MIN_SALARY, ROSTER_MAX, ROSTER_MIN, SEASON_DAYS,
-                   START_SEASON, TRADE_DEADLINE_DAY)
+                   START_SEASON, TRADE_DEADLINE_DAY, VALID_TEAM_COUNTS, CONFERENCES, playoff_size)
 
 MLE = 7.5
-LOTTERY_ODDS = [25, 20, 17, 15, 12, 11]
 
 
 class GameError(Exception):
@@ -88,7 +87,8 @@ def _gen_age(rng):
     return int(max(19, min(36, round(rng.gauss(26.3, 3.9)))))
 
 
-def gen_prospects(L, season, rng, n=26):
+def gen_prospects(L, season, rng, n=None):
+    n = n or int(round(2.6 * len(L["teams"])))
     names = used_names(L)
     targets = sorted([max(40, min(68, rng.gauss(52, 6.5))) for _ in range(n)], reverse=True)
     for i in range(4):
@@ -102,28 +102,69 @@ def gen_prospects(L, season, rng, n=26):
         L["players"][str(p["id"])] = p
 
 
-def new_league(name, user_tid, mode="classic", seed=None):
+def pick_franchises(user_idx, n):
+    """League = the user's franchise + the first n-1 others in canonical order."""
+    user_idx = max(0, min(len(TEAMS) - 1, int(user_idx)))
+    rest = [i for i in range(len(TEAMS)) if i != user_idx]
+    chosen = sorted([user_idx] + rest[:n - 1])
+    return chosen, chosen.index(user_idx)
+
+
+def assign_conferences(L):
+    """Split into two conferences, keeping seeded rivals together and the sizes equal."""
+    abbr_to_tid = {t["abbr"]: t["tid"] for t in L["teams"]}
+    pairs = [(abbr_to_tid[a], abbr_to_tid[b]) for a, b, _ in FR.SEEDED if a in abbr_to_tid and b in abbr_to_tid]
+    paired = {x for pr in pairs for x in pr}
+    singles = [t["tid"] for t in L["teams"] if t["tid"] not in paired]
+    conf = {}
+    sizes = [0, 0]
+    for a, b in pairs:
+        c = 0 if sizes[0] <= sizes[1] else 1
+        conf[a] = conf[b] = c
+        sizes[c] += 2
+    for tid in singles:
+        c = 0 if sizes[0] <= sizes[1] else 1
+        conf[tid] = c
+        sizes[c] += 1
+    for t in L["teams"]:
+        t["conf"] = conf[t["tid"]]
+
+
+def new_league(name, user_tid, mode="classic", seed=None, settings=None):
     rng = random.Random(seed)
     S = START_SEASON
+    st = dict(settings or {})
+    n = int(st.get("teams") or 10)
+    if n not in VALID_TEAM_COUNTS:
+        raise GameError("Leagues can have 10, 12, 14, 16, 18 or 20 teams.")
+    mode = st.get("start") or mode
+    settings = {"teams": n, "conf": bool(st.get("conf")), "committee": bool(st.get("committee")),
+                "start": mode, "playoff": playoff_size(n)}
+    franchises, user = pick_franchises(user_tid, n)
     L = {
-        "v": 1, "name": name or "Nine & Done League", "user": int(user_tid), "mode": mode, "season": S,
+        "v": 2, "name": name or "Nine & Done League", "user": user, "mode": mode, "season": S,
         "phase": "draft", "day": 0, "next_pid": 0, "teams": [], "players": {}, "picks": [], "schedule": [],
         "results": [], "playoffs": None, "draft": None, "news": [], "tx": [], "history": [], "retired": [],
         "block": {"players": [], "picks": []}, "offers": [], "resign": [], "offseason": None,
         "last_rank": None, "seasons_played": 0, "live": None, "allstar": None, "allstar_hist": [],
+        "settings": settings, "rankings": [], "next_schedule": None, "nego": {}, "scout": {"pts": 12, "lv": {}},
+        "energy": {}, "season_awards": None,
     }
-    for i, td in enumerate(TEAMS):
-        L["teams"].append({**td, "tid": i, "strategy": dict(DEFAULT_STRAT), "lineup": [], "w": 0, "l": 0,
-                           "pf": 0, "pa": 0, "h2h": {}, "streak": 0, "hist": [], "dead": 0.0, "mle": False,
-                           "titles": 0, "upg": {}, "fp": 6, "fp_total": 0, "fp_log": []})
+    for i, fi in enumerate(franchises):
+        L["teams"].append({**TEAMS[fi], "fid": fi, "tid": i, "strategy": dict(DEFAULT_STRAT), "lineup": [],
+                           "w": 0, "l": 0, "pf": 0, "pa": 0, "h2h": {}, "streak": 0, "hist": [], "dead": 0.0,
+                           "mle": False, "titles": 0, "upg": {}, "fp": 4, "fp_total": 0, "fp_log": [],
+                           "conf": 0, "philo": rng.choice(FR.PHILOSOPHIES), "untouch": None, "results": []})
+    if settings["conf"]:
+        assign_conferences(L)
     FR.ensure_rivals(L)
     names = set()
     tiers = [(79, 90), (74, 82), (70, 77), (66, 73), (63, 70), (60, 67), (57, 64), (54, 61), (51, 58),
              (49, 56), (46, 53), (44, 51), (42, 50)]
     pos_plans = [rng.sample(["PG", "SG", "SF", "PF", "C", "PG", "SG", "SF", "PF", "C", "PG", "SF", "C"], 13)
-                 for _ in TEAMS]
+                 for _ in range(n)]
     for ti, (lo, hi) in enumerate(tiers):
-        tids = list(range(len(TEAMS)))
+        tids = list(range(n))
         rng.shuffle(tids)
         for tid in tids:
             p = P.generate(rng, new_pid(L), rng.uniform(lo, hi), _gen_age(rng), pos=pos_plans[tid][ti],
@@ -131,7 +172,7 @@ def new_league(name, user_tid, mode="classic", seed=None):
             p["contract"] = _contract_for(rng, p)
             p["tid"] = tid
             L["players"][str(p["id"])] = p
-    for _ in range(18):
+    for _ in range(int(n * 1.8)):
         p = P.generate(rng, new_pid(L), rng.uniform(42, 60), _gen_age(rng), used_names=names, season=S)
         p["tid"] = -1
         L["players"][str(p["id"])] = p
@@ -141,10 +182,11 @@ def new_league(name, user_tid, mode="classic", seed=None):
         for p in L["players"].values():
             p["tid"] = -2
             p["dclass"] = S
+            p.pop("prospect", None)          # fantasy pool is fully scouted
             if p["contract"] is None and p["age"] > 22:
                 p["contract"] = _contract_for(rng, p)
         make_picks(L, [S + 1, S + 2])
-        order = list(range(len(TEAMS)))
+        order = list(range(n))
         rng.shuffle(order)
         picks = []
         for rd in range(13):
@@ -162,7 +204,12 @@ def new_league(name, user_tid, mode="classic", seed=None):
     for p in L["players"].values():
         if p["tid"] == -1:
             p["ask"] = P.contract_ask(p)
-    L["schedule"] = make_schedule(rng, len(TEAMS))
+    L["schedule"] = make_schedule(rng, L)
+    L["next_schedule"] = make_schedule(rng, L)
+    refresh_energy(L, full=True)
+    ai_untouchables(L, rng)
+    if settings["committee"]:
+        FR.committee_rank(L)
     return L
 
 
@@ -174,15 +221,31 @@ def migrate(L):
             p["trait"] = P.roll_trait(rng)
         p.setdefault("morale", 65)
         p.setdefault("mlog", [])
+    n = len(L["teams"])
+    L.setdefault("settings", {"teams": n, "conf": False, "committee": False, "start": L.get("mode", "classic"),
+                              "playoff": playoff_size(n)})
     for t in L["teams"]:
         t.setdefault("upg", {})
         t.setdefault("fp", 6)
         t.setdefault("fp_total", 0)
         t.setdefault("fp_log", [])
+        t.setdefault("conf", 0)
+        t.setdefault("philo", rng.choice(FR.PHILOSOPHIES))
+        t.setdefault("untouch", None)
+        t.setdefault("results", [])
+        t.setdefault("fid", next((i for i, d in enumerate(TEAMS) if d["abbr"] == t["abbr"]), t["tid"]))
     FR.ensure_rivals(L)
-    L.setdefault("live", None)
-    L.setdefault("allstar", None)
-    L.setdefault("allstar_hist", [])
+    for k, v in (("live", None), ("allstar", None), ("allstar_hist", []), ("rankings", []), ("next_schedule", None),
+                 ("nego", {}), ("scout", {"pts": 12, "lv": {}}), ("energy", {}), ("season_awards", None)):
+        L.setdefault(k, v)
+    if not L["energy"]:
+        refresh_energy(L, full=True)
+    if L["playoffs"] and "rounds" not in L["playoffs"]:
+        po = L["playoffs"]
+        po.update({"rounds": 2, "size": 4, "round_names": ["Semifinals", "Finals"],
+                   "seed": {str(t): i + 1 for i, t in enumerate(po["seeds"])}, "rank": list(po["seeds"])})
+        for s in po["series"]:
+            s.setdefault("slot", 0 if s["id"] in ("SF1", "F") else 1)
     return L
 
 
@@ -195,21 +258,118 @@ def make_picks(L, seasons):
                     L["picks"].append({"id": f"{s}-{rd}-{t}", "season": s, "rd": rd, "orig": t, "owner": t})
 
 
-def make_schedule(rng, n=10):
+def _circle_rounds(rng, n):
     teams = list(range(n))
     rng.shuffle(teams)
+    rounds = []
+    for _ in range(n - 1):
+        rounds.append([(teams[i], teams[n - 1 - i]) for i in range(n // 2)])
+        teams = [teams[0]] + [teams[-1]] + teams[1:-1]
+    return rounds
+
+
+def _conf_rounds(rng, n, conf, games):
+    """`games` rounds of perfect matchings with an in-conference quota per team (randomized backtracking)."""
+    c = n // 2
+    intra = min(c - 1, 6)
+    cross = games - intra
+    for _ in range(400):
+        used = set()
+        ci = [0] * n
+        cx = [0] * n
+        rounds = []
+        ok = True
+        for _r in range(games):
+            order = list(range(n))
+            rng.shuffle(order)
+
+            def solve(unmatched):
+                if not unmatched:
+                    return []
+                t = unmatched[0]
+                opts = [u for u in unmatched[1:] if (min(t, u), max(t, u)) not in used]
+                rng.shuffle(opts)
+                opts.sort(key=lambda u: 0 if (conf[u] == conf[t]) == (ci[t] < intra) else 1)
+                for u in opts:
+                    same = conf[u] == conf[t]
+                    if same and (ci[t] >= intra or ci[u] >= intra):
+                        continue
+                    if not same and (cx[t] >= cross or cx[u] >= cross):
+                        continue
+                    rest = [x for x in unmatched[1:] if x != u]
+                    sub = solve(rest)
+                    if sub is not None:
+                        return [(t, u)] + sub
+                return None
+            m = solve(order)
+            if m is None:
+                ok = False
+                break
+            for a, b in m:
+                used.add((min(a, b), max(a, b)))
+                if conf[a] == conf[b]:
+                    ci[a] += 1
+                    ci[b] += 1
+                else:
+                    cx[a] += 1
+                    cx[b] += 1
+            rounds.append(m)
+        if ok:
+            return rounds
+    return None
+
+
+def make_schedule(rng, L):
+    """SEASON_DAYS game days; every team plays every day; no repeat opponents."""
+    n = len(L["teams"])
+    rounds = None
+    if L["settings"].get("conf") and n > 10:
+        rounds = _conf_rounds(rng, n, [t["conf"] for t in L["teams"]], SEASON_DAYS)
+    if rounds is None:
+        rounds = _circle_rounds(rng, n)
+        rng.shuffle(rounds)
+        rounds = rounds[:SEASON_DAYS]
+    home = [0] * n
     days = []
-    for r in range(n - 1):
+    for rnd in rounds:
         day = []
-        for i in range(n // 2):
-            a, b = teams[i], teams[n - 1 - i]
-            if (r + i) % 2:
+        for a, b in rnd:
+            if home[a] > home[b] or (home[a] == home[b] and rng.random() < 0.5):
                 a, b = b, a
+            home[a] += 1
             day.append({"h": a, "a": b})
         days.append(day)
-        teams = [teams[0]] + [teams[-1]] + teams[1:-1]
-    rng.shuffle(days)
     return days
+
+
+def refresh_energy(L, full=False):
+    """Daily allowances: trade calls and scouting points."""
+    u = L["user"]
+    fo = FR.lvl(L, u, "frontoffice")
+    sc = FR.lvl(L, u, "scouting")
+    e = L.setdefault("energy", {})
+    e["trade_max"] = 2 + (fo >= 2) + (fo >= 4)
+    e["trade"] = e["trade_max"]
+    daily = 6 + 3 * sc
+    s = L.setdefault("scout", {"pts": 0, "lv": {}})
+    s["daily"] = daily
+    s["cap"] = daily * 3
+    s["pts"] = min(s["cap"], s.get("pts", 0) + (daily * 2 if full else daily))
+
+
+def ai_untouchables(L, rng):
+    """Rare: some AI franchises declare their cornerstone off-limits for the season."""
+    for t in L["teams"]:
+        if t["tid"] == L["user"]:
+            continue
+        t["untouch"] = None
+        r = roster(L, t["tid"])
+        if not r:
+            continue
+        best = max(r, key=lambda p: p["ovr"] + (max(0, p["pot"] - p["ovr"]) * 0.5 if p["age"] <= 23 else 0))
+        elite = P.disp(best["ovr"]) >= 89 or (best["age"] <= 23 and P.disp(best["pot"]) >= 90)
+        if elite and rng.random() < 0.45:
+            t["untouch"] = best["id"]
 
 
 # ======================================================================= lineups
@@ -314,8 +474,9 @@ def apply_game(L, res, home, away, gid, playoff=False, series=None):
         tl["streak"] = tl["streak"] - 1 if tl["streak"] < 0 else -1
         tw["h2h"].setdefault(str(lose), [0, 0])[0] += 1
         tl["h2h"].setdefault(str(win), [0, 0])[1] += 1
-        FR.earn(L, win, 3, "Regular-season win")
-        FR.earn(L, lose, 1, "Regular-season game")
+        FR.earn(L, win, 2, "Regular-season win")
+        team(L, win)["results"] = (team(L, win).get("results", []) + [1])[-9:]
+        team(L, lose)["results"] = (team(L, lose).get("results", []) + [0])[-9:]
     else:
         FR.earn(L, win, 2, "Playoff win")
 
@@ -330,11 +491,11 @@ def apply_game(L, res, home, away, gid, playoff=False, series=None):
            "events": res["events"], "flow": res["flow"], "challenges": res.get("challenges") or []}
     FR.rivalry_game(L, home, away, hs, as_, res["ot"], playoff)
     if rtier >= 1:
-        FR.earn(L, win, 2, f"Rivalry win over {team(L, lose)['abbr']}")
+        FR.earn(L, win, 1, f"Rivalry win over {team(L, lose)['abbr']}")
     FR.after_game(L, doc, rtier)
     ok = sum(1 for c in doc["challenges"] if c.get("ok"))
     if ok and user in (home, away):
-        FR.earn(L, user, min(3, ok), f"Live-coaching challenges won ({ok})")
+        FR.earn(L, user, min(2, ok), f"Live-coaching challenges won ({ok})")
     if playoff and series:
         _series_result(L, series, gid, home, away, hs, as_, doc)
     return summary, doc
@@ -346,7 +507,7 @@ def _series_result(L, sid, gid, home, away, hs, as_, doc):
     s["games"].append(gid)
     winner = home if hs > as_ else away
     s["w"][0 if winner == s["hi"] else 1] += 1
-    if s["rd"] == 2:
+    if s["rd"] == po["rounds"]:
         for pid, row in doc["box"].items():
             f = po["fstats"].setdefault(str(pid), dict.fromkeys(STAT_KEYS, 0))
             for k in STAT_KEYS:
@@ -354,10 +515,11 @@ def _series_result(L, sid, gid, home, away, hs, as_, doc):
     if max(s["w"]) == 3:
         s["winner"] = s["hi"] if s["w"][0] == 3 else s["lo"]
         loser = s["lo"] if s["winner"] == s["hi"] else s["hi"]
-        label = "the Finals" if s["rd"] == 2 else "the semifinals"
-        news(L, f'{tname(L, s["winner"])} win {label} {max(s["w"])}–{min(s["w"])} over '
+        po.setdefault("elim", {})[str(loser)] = s["rd"]
+        label = po["round_names"][s["rd"] - 1]
+        news(L, f'{tname(L, s["winner"])} win the {label} {max(s["w"])}–{min(s["w"])} over '
                 f'{team(L, loser)["name"]}.', "big")
-        FR.earn(L, s["winner"], 6, "Won a playoff series")
+        FR.earn(L, s["winner"], 5, f"Won the {label}")
         FR.rivalry_series(L, s["winner"], loser, sum(s["w"]))
 
 
@@ -440,23 +602,36 @@ def sim_day(L, rng=None, skip_user=False):
 def end_day(L, rng):
     tick_injuries(L)
     L["day"] += 1
+    refresh_energy(L)
+    FR.ai_spend(L, rng)
     if L["phase"] == "regular":
+        if L["settings"].get("committee"):
+            FR.committee_rank(L)
         if L["day"] == FR.ALLSTAR_DAY and not (L.get("allstar") and L["allstar"].get("s") == L["season"]):
             FR.allstar_setup(L, rng)
         if L["day"] >= SEASON_DAYS:
             start_playoffs(L)
         return
     po = L["playoffs"]
-    rd1 = [s for s in po["series"] if s["rd"] == 1]
-    if all(s["winner"] is not None for s in rd1) and not any(s["rd"] == 2 for s in po["series"]):
-        a, b = rd1[0]["winner"], rd1[1]["winner"]
-        hi, lo = (a, b) if po["seeds"].index(a) < po["seeds"].index(b) else (b, a)
-        po["series"].append({"id": "F", "rd": 2, "hi": hi, "lo": lo, "w": [0, 0], "games": [], "winner": None})
-        news(L, f'THE FINALS: {tname(L, hi)} vs {tname(L, lo)}.', "big")
-    fin = [s for s in po["series"] if s["rd"] == 2]
-    if fin and fin[0]["winner"] is not None:
-        po["champion"] = fin[0]["winner"]
+    cur = max(s["rd"] for s in po["series"])
+    rs = sorted([s for s in po["series"] if s["rd"] == cur], key=lambda s: s["slot"])
+    if any(s["winner"] is None for s in rs):
+        return
+    if cur == po["rounds"]:
+        po["champion"] = rs[0]["winner"]
         finalize_season(L, rng)
+        return
+    nxt = cur + 1
+    made = []
+    for k in range(len(rs) // 2):
+        a, b = rs[2 * k]["winner"], rs[2 * k + 1]["winner"]
+        hi, lo = (a, b) if po["rank"].index(a) < po["rank"].index(b) else (b, a)
+        sid = "F" if nxt == po["rounds"] else f"R{nxt}-{k}"
+        po["series"].append({"id": sid, "rd": nxt, "slot": k, "hi": hi, "lo": lo, "w": [0, 0], "games": [],
+                             "winner": None})
+        made.append(f"{team(L, hi)['abbr']} vs {team(L, lo)['abbr']}")
+    label = po["round_names"][nxt - 1]
+    news(L, f"{'THE FINALS' if nxt == po['rounds'] else label}: " + ", ".join(made) + ".", "big")
 
 
 def live_game(L, rng):
@@ -481,10 +656,10 @@ def finish_live(L, g, rng):
 
 
 # ======================================================================= standings / playoffs
-def standings(L):
-    ts = L["teams"]
+def standings(L, tids=None):
+    """Order by wins, then head-to-head among teams tied on wins, then point differential."""
+    ts = [team(L, t) for t in tids] if tids is not None else list(L["teams"])
     base = sorted(ts, key=lambda t: (-t["w"], -(t["pf"] - t["pa"])))
-    # head-to-head among teams tied on wins
     out = []
     i = 0
     while i < len(base):
@@ -500,26 +675,69 @@ def standings(L):
     return [t["tid"] for t in out]
 
 
+def conf_standings(L):
+    order = standings(L)
+    return {c: [t for t in order if team(L, t)["conf"] == c] for c in (0, 1)}
+
+
+def playoff_field(L):
+    """Pairs for round 1 (better seed first), seed labels, ranking order for home court, round names."""
+    st = L["settings"]
+    P = st.get("playoff") or playoff_size(len(L["teams"]))
+    committee, conf = st.get("committee"), st.get("conf")
+    order = FR.committee_order(L) if committee else standings(L)
+    auto = []
+    if conf and not committee:
+        cs = {c: standings(L, [t for t in order if team(L, t)["conf"] == c]) for c in (0, 1)}
+        half = P // 2
+        pairs, seed = [], {}
+        for c in (0, 1):
+            sd = cs[c][:half]
+            for i, t in enumerate(sd):
+                seed[str(t)] = f"{CONFERENCES[c][0]}{i + 1}"
+            pairs += [(sd[0], sd[1])] if half == 2 else [(sd[0], sd[3]), (sd[1], sd[2])]
+        field = [t for pr in pairs for t in pr]
+        rank = [t for t in standings(L) if t in field]
+        names = ["Conference Finals", "Finals"] if P == 4 else ["First Round", "Conference Finals", "Finals"]
+    else:
+        if committee and conf:
+            auto = [next(t for t in order if team(L, t)["conf"] == c) for c in (0, 1)]
+            at_large = [t for t in order if t not in auto][:P - len(auto)]
+            field = sorted(auto + at_large, key=order.index)
+        else:
+            field = order[:P]
+        seed = {str(t): str(i + 1) for i, t in enumerate(field)}
+        idx = [(1, 4), (2, 3)] if P == 4 else [(1, 8), (4, 5), (2, 7), (3, 6)]
+        pairs = [(field[a - 1], field[b - 1]) for a, b in idx]
+        rank = list(field)
+        names = ["Semifinals", "Finals"] if P == 4 else ["Quarterfinals", "Semifinals", "Finals"]
+    return pairs, seed, rank, names, auto
+
+
 def start_playoffs(L):
-    seeds = standings(L)[:4]
+    if L["settings"].get("committee"):
+        FR.committee_rank(L, final=True)
+    pairs, seed, rank, names, auto = playoff_field(L)
     L["phase"] = "playoffs"
-    L["playoffs"] = {
-        "seeds": seeds,
-        "series": [
-            {"id": "SF1", "rd": 1, "hi": seeds[0], "lo": seeds[3], "w": [0, 0], "games": [], "winner": None},
-            {"id": "SF2", "rd": 1, "hi": seeds[1], "lo": seeds[2], "w": [0, 0], "games": [], "winner": None},
-        ],
-        "champion": None, "fstats": {},
-    }
+    rounds = len(names)
+    series = []
+    for k, (hi, lo) in enumerate(pairs):
+        sid = "F" if rounds == 1 else f"R1-{k}"
+        series.append({"id": sid, "rd": 1, "slot": k, "hi": hi, "lo": lo, "w": [0, 0], "games": [], "winner": None})
+    field = [t for pr in pairs for t in pr]
+    L["playoffs"] = {"seeds": field, "seed": seed, "rank": rank, "series": series, "rounds": rounds,
+                     "size": len(field), "round_names": names, "champion": None, "fstats": {}, "elim": {},
+                     "auto": auto}
     L["block"] = {"players": [], "picks": []}
     L["offers"] = []
     u = L["user"]
     news(L, "Regular season complete. Playoff field: " + ", ".join(
-        f"#{i + 1} {team(L, t)['abbr']}" for i, t in enumerate(seeds)) + ".", "big")
-    if u in seeds:
-        news(L, f"Your {team(L, u)['name']} clinched the #{seeds.index(u) + 1} seed!", "big", u)
+        f"({seed[str(t)]}) {team(L, t)['abbr']}" for t in sorted(field, key=rank.index)) + ".", "big")
+    if u in field:
+        news(L, f"Your {team(L, u)['name']} are in as the {seed[str(u)]} seed!", "big", u)
     else:
         news(L, "Your team missed the playoffs. The lottery awaits.", "info", u)
+    reveal_awards(L)
 
 
 # ======================================================================= awards & season end
@@ -537,73 +755,102 @@ def eff(pg):
             - 0.45 * (pg["fga"] - pg["fgm"]) - 0.3 * (pg["fta"] - pg["ftm"]))
 
 
-def compute_awards(L):
+def award_race(L, min_gp=None):
+    """Live ladders for every regular-season award: {award: [(pid, score), ...]} best first."""
     S = L["season"]
     key = str(S)
+    if min_gp is None:
+        min_gp = max(1, int(L["day"] * 0.55)) if L["phase"] == "regular" else 5
     cands = []
     for p in L["players"].values():
         st = p["stats"].get(key)
-        if not st or st["gp"] < 5:
+        if not st or st["gp"] < min_gp or p["tid"] < 0:
             continue
         pg = per_game(st)
         t = team(L, st["tid"])
         wp = t["w"] / max(1, t["w"] + t["l"])
         cands.append((p, pg, eff(pg), wp))
-    if not cands:
-        return {}
-    aw = {}
-    mvp = sorted(cands, key=lambda c: -(c[2] * (0.55 + c[3] * 0.9)))
-    aw["MVP"] = mvp[0][0]["id"]
-    dp = sorted(cands, key=lambda c: -(c[1]["stl"] * 2.3 + c[1]["blk"] * 2.3 + c[1]["drb"] * 0.45 +
-                                       (c[0]["a"]["perd"] + c[0]["a"]["intd"] + c[0]["a"]["stl"] +
-                                        c[0]["a"]["blk"]) / 40 + c[3] * 2))
-    aw["DPOY"] = dp[0][0]["id"]
-    rook = [c for c in cands if c[0].get("rookie") == S]
-    if rook:
-        aw["ROY"] = max(rook, key=lambda c: c[2])[0]["id"]
-    six = [c for c in cands if c[1]["gs"] < c[1]["gp"] / 2]
-    if six:
-        aw["6MOY"] = max(six, key=lambda c: c[2])[0]["id"]
+    race = {}
+    race["MVP"] = sorted(((c[0]["id"], c[2] * (0.55 + c[3] * 0.9)) for c in cands), key=lambda x: -x[1])
+    race["DPOY"] = sorted(((c[0]["id"], c[1]["stl"] * 2.3 + c[1]["blk"] * 2.3 + c[1]["drb"] * 0.45 +
+                           (c[0]["a"]["perd"] + c[0]["a"]["intd"] + c[0]["a"]["stl"] + c[0]["a"]["blk"]) / 40 +
+                           c[3] * 2) for c in cands), key=lambda x: -x[1])
+    race["ROY"] = sorted(((c[0]["id"], c[2]) for c in cands if c[0].get("rookie") == S), key=lambda x: -x[1])
+    race["6MOY"] = sorted(((c[0]["id"], c[2]) for c in cands if c[1]["gs"] < c[1]["gp"] / 2), key=lambda x: -x[1])
     prev = str(S - 1)
     mip = []
     for c in cands:
         ps = c[0]["stats"].get(prev)
         if ps and ps["gp"] >= 4:
-            mip.append((c[0], c[2] - eff(per_game(ps))))
-    if mip:
-        aw["MIP"] = max(mip, key=lambda x: x[1])[0]["id"]
-    # All-League teams: 2 guards, 2 forwards, 1 center each
+            mip.append((c[0]["id"], c[2] - eff(per_game(ps))))
+    race["MIP"] = sorted(mip, key=lambda x: -x[1])
+    return race
+
+
+def compute_awards(L, rng=None):
+    """Regular-season voting: the ladders plus voter variance (so the favorite usually, not always, wins)."""
+    rng = rng or random.Random(L["season"] * 31)
+    race = award_race(L, min_gp=min(5, max(1, L["day"] - 3)))
+    aw = {}
+    for k in ("MVP", "DPOY", "ROY", "6MOY", "MIP"):
+        top = race[k][:6]
+        if not top:
+            continue
+        lo = min(s for _, s in top)
+        voted = max(top, key=lambda x: (x[1] - lo + 1) * rng.gauss(1, 0.06))
+        aw[k] = voted[0]
+    order = [pid for pid, _ in race["MVP"]]
     slots = {"G": ("PG", "SG"), "F": ("SF", "PF"), "C": ("C",)}
-    need = [("G", 2), ("F", 2), ("C", 1)]
     used = set()
     teams_ = []
     for _ in range(2):
         five = []
-        for grp, n in need:
-            for c in mvp:
+        for grp, n in (("G", 2), ("F", 2), ("C", 1)):
+            for pid in order:
                 if n == 0:
                     break
-                if c[0]["id"] in used or c[0]["pos"] not in slots[grp]:
+                p = pl(L, pid)
+                if pid in used or p["pos"] not in slots[grp]:
                     continue
-                five.append(c[0]["id"])
-                used.add(c[0]["id"])
+                five.append(pid)
+                used.add(pid)
                 n -= 1
         teams_.append(five)
     aw["ALL1"], aw["ALL2"] = teams_
-    po = L["playoffs"]
-    if po and po.get("champion") is not None and po["fstats"]:
-        champ = po["champion"]
-        best, bv = None, -99
-        for pid, f in po["fstats"].items():
-            p = pl(L, pid)
-            if not p or p["tid"] != champ:
-                continue
-            v = f["pts"] + 1.1 * (f["orb"] + f["drb"]) + 1.4 * f["ast"] + 1.8 * (f["stl"] + f["blk"]) - f["tov"]
-            if v > bv:
-                best, bv = p["id"], v
-        if best:
-            aw["FMVP"] = best
     return aw
+
+
+def finals_mvp(L):
+    po = L["playoffs"]
+    if not po or po.get("champion") is None or not po["fstats"]:
+        return None
+    best, bv = None, -99
+    for pid, f in po["fstats"].items():
+        p = pl(L, pid)
+        if not p or p["tid"] != po["champion"]:
+            continue
+        v = f["pts"] + 1.1 * (f["orb"] + f["drb"]) + 1.4 * f["ast"] + 1.8 * (f["stl"] + f["blk"]) - f["tov"]
+        if v > bv:
+            best, bv = p["id"], v
+    return best
+
+
+def reveal_awards(L):
+    """End of the regular season: the votes are in."""
+    S = L["season"]
+    aw = compute_awards(L)
+    L["season_awards"] = {"s": S, "aw": aw}
+    for k, v in aw.items():
+        for pid in (v if isinstance(v, list) else [v]):
+            p = pl(L, pid)
+            if p:
+                p["awards"].append({"s": S, "a": k})
+                if p["tid"] >= 0:
+                    FR.earn(L, p["tid"], 2, f"{AWARD_NAMES.get(k, k)}: {P.full_name(p)}")
+    for k in ("MVP", "DPOY", "ROY", "6MOY", "MIP"):
+        if k in aw:
+            p = pl(L, aw[k])
+            news(L, f"{AWARD_NAMES[k]}: {P.full_name(p)} ({team(L, p['tid'])['abbr']}).", "big", p["tid"])
 
 
 AWARD_NAMES = {"MVP": "Most Valuable Player", "DPOY": "Defensive Player of the Year", "ROY": "Rookie of the Year",
@@ -615,49 +862,52 @@ def finalize_season(L, rng):
     S = L["season"]
     po = L["playoffs"]
     champ = po["champion"]
-    fin = [s for s in po["series"] if s["rd"] == 2][0]
+    fin = [s for s in po["series"] if s["rd"] == po["rounds"]][0]
     runner = fin["lo"] if fin["winner"] == fin["hi"] else fin["hi"]
     team(L, champ)["titles"] += 1
-    aw = compute_awards(L)
-    for k, v in aw.items():
-        ids = v if isinstance(v, list) else [v]
-        for pid in ids:
-            p = pl(L, pid)
-            if p:
-                p["awards"].append({"s": S, "a": k})
+    sa = L.get("season_awards") or {}
+    aw = dict(sa.get("aw") or {}) if sa.get("s") == S else compute_awards(L)
+    fm = finals_mvp(L)
+    if fm:
+        aw["FMVP"] = fm
+        p = pl(L, fm)
+        p["awards"].append({"s": S, "a": "FMVP"})
+        FR.earn(L, p["tid"], 2, f"Finals MVP: {P.full_name(p)}")
     for p in roster(L, champ):
         p["awards"].append({"s": S, "a": "CHAMP"})
     stand = standings(L)
+    elim = po.get("elim", {})
     for i, tid in enumerate(stand):
         t = team(L, tid)
-        res = "Champion" if tid == champ else "Finals" if tid == runner else \
-            "Semifinals" if tid in po["seeds"] else "Lottery"
+        if tid == champ:
+            res = "Champion"
+        elif tid == runner:
+            res = "Finals"
+        elif str(tid) in elim:
+            res = po["round_names"][elim[str(tid)] - 1]
+        else:
+            res = "Lottery"
         t["hist"].append({"s": S, "w": t["w"], "l": t["l"], "rank": i + 1, "res": res,
-                          "seed": po["seeds"].index(tid) + 1 if tid in po["seeds"] else None})
+                          "seed": po["seed"].get(str(tid))})
     u = L["user"]
     ut = team(L, u)
     L["history"].append({
         "s": S, "champ": champ, "runner": runner, "fin": list(fin["w"]),
         "awards": {k: (v if isinstance(v, list) else v) for k, v in aw.items()},
         "user": {"w": ut["w"], "l": ut["l"], "res": ut["hist"][-1]["res"]},
-        "names": {str(pid): P.full_name(pl(L, pid)) for v in aw.values() for pid in (v if isinstance(v, list) else [v])},
+        "names": {str(pid): P.full_name(pl(L, pid)) for v in aw.values() for pid in (v if isinstance(v, list) else [v])
+                  if pl(L, pid)},
     })
     news(L, f"🏆 {tname(L, champ)} are the {S} champions!", "big", champ)
-    if "MVP" in aw:
-        m = pl(L, aw["MVP"])
-        news(L, f"{P.full_name(m)} ({team(L, m['tid'])['abbr']}) is the {S} MVP.", "big")
     if champ == u:
         news(L, "YOU WON THE CHAMPIONSHIP. Parade route is being planned.", "big", u)
-    FR.earn(L, champ, 15, "Won the championship")
-    for k, v in aw.items():
-        for pid in (v if isinstance(v, list) else [v]):
-            p = pl(L, pid)
-            if p and p["tid"] >= 0:
-                FR.earn(L, p["tid"], 3, f"{AWARD_NAMES.get(k, k)}: {P.full_name(p)}")
-    # lottery order for next draft: non-playoff worst->best, then playoff teams
-    non = [t for t in reversed(stand) if t not in po["seeds"]]
-    semis = [t for t in reversed(stand) if t in po["seeds"] and t not in (champ, runner)]
-    L["last_rank"] = non + semis + [runner, champ]
+    FR.earn(L, champ, 12, "Won the championship")
+    # lottery order for next draft: non-playoff worst->best, then playoff teams by how far they went
+    field = set(po["seeds"])
+    non = [t for t in reversed(stand) if t not in field]
+    out = sorted([t for t in field if t not in (champ, runner)],
+                 key=lambda t: (elim.get(str(t), 0), -stand.index(t)))
+    L["last_rank"] = non + out + [runner, champ]
     start_offseason(L, rng)
 
 
@@ -745,6 +995,9 @@ def start_offseason(L, rng):
     FR.offseason_morale(L)
     FR.decay_rivals(L)
     FR.ai_spend(L, rng)
+    sc = L.setdefault("scout", {"pts": 0, "lv": {}})
+    sc["pts"] = min(sc.get("cap", 30), sc.get("pts", 0) + 15 + 5 * FR.lvl(L, L["user"], "scouting"))
+    refresh_energy(L)
     L["allstar"] = None
     L["block"] = {"players": [], "picks": []}
     L["offers"] = []
@@ -787,7 +1040,7 @@ def fa_mood(L, tid):
     t = team(L, tid)
     if t["hist"]:
         last = t["hist"][-1]["res"]
-        base = {"Champion": 0.9, "Finals": 0.94, "Semifinals": 0.98}.get(last, 1.06)
+        base = 0.9 if last == "Champion" else 0.94 if last == "Finals" else 1.06 if last == "Lottery" else 0.98
     else:
         base = 1.0
     return base * (1 - 0.03 * FR.lvl(L, tid, "frontoffice"))
@@ -824,7 +1077,7 @@ def advance_season(L, rng=None):
         if (p["age"] >= 33 and rng.random() < 0.5) or (p["ovr"] < 44 and rng.random() < 0.6):
             retire(L, p)
     fas = sorted([p for p in L["players"].values() if p["tid"] == -1], key=lambda p: p["ovr"])
-    for p in fas[:max(0, len(fas) - 32)]:
+    for p in fas[:max(0, len(fas) - int(3.2 * len(L["teams"])))]:
         retire(L, p)
     # new season
     L["season"] += 1
@@ -835,8 +1088,18 @@ def advance_season(L, rng=None):
     L["playoffs"] = None
     L["offseason"] = None
     for t in L["teams"]:
-        t.update({"w": 0, "l": 0, "pf": 0, "pa": 0, "h2h": {}, "streak": 0})
-    L["schedule"] = make_schedule(rng, len(L["teams"]))
+        t.update({"w": 0, "l": 0, "pf": 0, "pa": 0, "h2h": {}, "streak": 0, "results": []})
+    # schedules are agreed a year in advance: play last year's published slate, publish next year's
+    L["schedule"] = L.get("next_schedule") or make_schedule(rng, L)
+    L["next_schedule"] = make_schedule(rng, L)
+    L["rankings"] = []
+    L["season_awards"] = None
+    L["nego"] = {}
+    team(L, L["user"]).pop("untouch_s", None)
+    ai_untouchables(L, rng)
+    refresh_energy(L, full=True)
+    if L["settings"].get("committee"):
+        FR.committee_rank(L)
     L["picks"] = [pk for pk in L["picks"] if pk["season"] >= S]
     make_picks(L, [S, S + 1, S + 2])
     if not any(p["tid"] == -2 and p.get("dclass") == S for p in L["players"].values()):
@@ -934,16 +1197,19 @@ def setup_rookie_draft(L, rng, first=False):
         rng.shuffle(order)
     else:
         rank = L["last_rank"]
-        non = rank[:6]
-        pool = list(zip(non, LOTTERY_ODDS))
+        k = max(2, n - (L["settings"].get("playoff") or playoff_size(n)))
+        non = rank[:k]
+        raw = [(k - i) ** 1.3 for i in range(k)]
+        odds = [round(100 * w / sum(raw)) for w in raw]
+        pool = list(zip(non, odds))
         winners = []
-        for _ in range(3):
+        for _ in range(3 if k <= 8 else 4):
             pick = rng.choices(pool, weights=[w for _, w in pool])[0]
             winners.append(pick[0])
             pool.remove(pick)
         rest_non = [t for t in non if t not in winners]
-        order = winners + rest_non + rank[6:]
-        lottery = [{"tid": t, "odds": LOTTERY_ODDS[i], "seed": i + 1, "pick": order.index(t) + 1}
+        order = winners + rest_non + rank[k:]
+        lottery = [{"tid": t, "odds": odds[i], "seed": i + 1, "pick": order.index(t) + 1}
                    for i, t in enumerate(non)]
     picks = []
     for rd in (1, 2):

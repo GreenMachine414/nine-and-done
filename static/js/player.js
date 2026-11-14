@@ -14,18 +14,24 @@ export function openPlayer(pid) {
   const lab = L.consts.attr_label;
   const status = p.tid === -1 ? "Free agent" : p.tid === -2 ? `Draft prospect · ${p.dclass} class` : `${t.city} ${t.name}`;
   const isProspect = p.tid === -2;
-  const potTxt = isProspect && p.scout ? `${p.scout[0]}–${p.scout[1]}` : p.pot;
+  const potTxt = U.potText(p);
+  const fog = !!p.fog;
 
   const attrs = GROUPS.map(([g, ks]) => `<div class="attr-group">${g}</div>` + ks.map((k) => {
     const v = p.a[k], c = ceil[k];
+    if (v === undefined) {
+      return `<div class="attr"><div class="top"><span>${lab[k]}</span><span class="v unk">??<span class="mute" style="font-weight:400"> / ${c}</span></span></div>
+        <div class="bar unk"><span class="ceil" style="left:${c}%" title="${p.pos} ceiling: ${c}"></span></div></div>`;
+    }
     const col = v >= 85 ? "var(--volt)" : v >= 72 ? "var(--acc)" : v >= 55 ? "#6b7488" : "#454c5c";
     return `<div class="attr"><div class="top"><span>${lab[k]}</span><span class="v" style="color:${col}">${v}<span class="mute" style="font-weight:400"> / ${c}</span></span></div>
       <div class="bar"><i style="width:${v}%;background:${col}"></i><span class="ceil" style="left:${c}%" title="${p.pos} ceiling: ${c}"></span></div></div>`;
   }).join("")).join("");
 
-  const tt = p.t;
+  const tt = p.t || { three: 25, mid: 25, rim: 25, post: 25, use: 0, pass: 0 };
   const diet = [["three", "3PT", U.SHOT_COLORS.three], ["mid", "Mid", U.SHOT_COLORS.mid], ["rim", "Rim", U.SHOT_COLORS.rim], ["post", "Post", U.SHOT_COLORS.post]];
-  const tend = `<div class="diet">${diet.map(([k, , c]) => `<i style="width:${tt[k]}%;background:${c}"></i>`).join("")}</div>
+  const tend = fog ? `<div class="empty" style="padding:14px">Tendencies unknown. Scout him further to learn his game.</div>
+    <div class="row wrap" style="gap:8px">${p.scout.step < p.scout.max ? `<button class="btn sm pri" data-act="pm-scout" data-pid="${p.id}" ${S.L.scout.pts >= p.scout.cost ? "" : "disabled"}>🔭 Scout (${p.scout.cost} pts)</button>` : `<span class="chip good">Fully scouted</span>`}<span class="label">You have ${S.L.scout.pts} pts · report ${p.scout.step}/${p.scout.max}</span></div>` : `<div class="diet">${diet.map(([k, , c]) => `<i style="width:${tt[k]}%;background:${c}"></i>`).join("")}</div>
     <div class="legend">${diet.map(([k, l, c]) => `<span><i style="background:${c}"></i>${l} ${tt[k]}%</span>`).join("")}</div>
     <div class="grid g2" style="margin-top:14px;gap:12px">
       <div><div class="row"><span class="label">Usage</span><span class="sp"></span><span class="mono">${tt.use}</span></div><div class="bar" style="margin-top:6px"><i style="width:${tt.use}%"></i></div></div>
@@ -60,8 +66,14 @@ export function openPlayer(pid) {
     const onBlock = L.block.players.includes(p.id);
     actions.push(`<button class="btn sm ${onBlock ? "" : "ghost"}" data-act="toggle-block" data-pid="${p.id}">${onBlock ? "Remove from block" : "Put on trade block"}</button>`);
     actions.push(`<button class="btn sm danger" data-act="release" data-pid="${p.id}">Release</button>`);
+    const ut = T(L.user).untouch === p.id;
+    const usedThisSeason = T(L.user).untouch_s === L.season && T(L.user).untouch && !ut;
+    actions.push(ut ? `<button class="btn sm" data-act="untouch" data-pid="0" data-for="${p.id}">🔒 Remove untouchable tag</button>`
+      : `<button class="btn sm ghost" data-act="untouch" data-pid="${p.id}" data-for="${p.id}" ${usedThisSeason ? "disabled title='One untouchable per season'" : ""}>🔒 Make untouchable</button>`);
   } else if (p.tid === -1) {
-    actions.push(`<button class="btn sm pri" data-go="#/fa">Sign in Free Agency (${U.money(p.ask?.sal || 0)})</button>`);
+    actions.push(`<button class="btn sm pri" data-act="nego" data-pid="${p.id}" data-kind="fa">Negotiate (asks ${U.money(p.ask?.sal || 0)})</button>`);
+  } else if (p.tid >= 0 && T(p.tid).untouch === p.id) {
+    actions.push(`<span class="chip lock">🔒 Untouchable: ${U.esc(T(p.tid).abbr)} won't discuss him this season</span>`);
   } else if (p.tid >= 0 && L.derived.trades_open) {
     actions.push(`<button class="btn sm pri" data-act="trade-for" data-pid="${p.id}">Trade for ${U.esc(p.ln)}</button>`);
   }
@@ -78,7 +90,7 @@ export function openPlayer(pid) {
     <div class="modal-body">
       <div class="grid g4" style="margin-bottom:18px">
         <div class="stat-tile"><div class="label">Contract</div><div class="v" style="font-size:18px">${p.contract ? `${U.money(p.contract.sal)} <span class="mute" style="font-size:12px">× ${p.contract.yrs}y</span>` : p.ask ? `<span class="dim" style="font-size:14px">asks ${U.money(p.ask.sal)}</span>` : "—"}</div></div>
-        <div class="stat-tile"><div class="label">Trade value</div><div class="v" style="font-size:18px">${p.tv}</div></div>
+        <div class="stat-tile"><div class="label">Trade value</div><div class="v" style="font-size:18px">${p.tv ?? "—"}</div></div>
         <div class="stat-tile"><div class="label">Drafted</div><div class="v" style="font-size:14px">${p.draft ? `${p.draft.s} · R${p.draft.rd} #${p.draft.no} (${T(p.draft.tid).abbr})` : "Undrafted"}</div></div>
         <div class="stat-tile"><div class="label">OVR history</div><div style="margin-top:6px">${U.sparkline(p.hist.map((h) => h.ovr), 150, 30)}</div></div>
       </div>
@@ -122,4 +134,33 @@ ACT["trade-for"] = (el) => {
   location.hash = "#/trade";
   query("trade_eval", { tid: S.ui.tradeTid, give: S.ui.give, get: S.ui.get })
     .then((r) => { S.ui.tradeEval = r.eval; hooks.render(); }).catch(() => {});
+};
+
+ACT["untouch"] = async (el) => {
+  const pid = +el.dataset.pid;
+  const L = S.L, t = T(L.user);
+  if (pid && !confirm("Name him your untouchable? No team can ask about him, and you only get one per season.")) return;
+  try {
+    await actLite("untouchable", { pid });
+    t.untouch = pid || null;
+    if (pid) { t.untouch_s = L.season; L.block.players = L.block.players.filter((x) => x !== pid); }
+    hooks.render();
+    if (el.closest(".modal")) openPlayer(+el.dataset.for);
+    U.toast(pid ? "Untouchable. He's off the table." : "Untouchable tag removed.");
+  } catch (e) { U.toast(e.message, true); }
+};
+ACT["pm-scout"] = async (el) => {
+  const pid = +el.dataset.pid;
+  el.disabled = true;
+  try {
+    const rep = (await actLite("scout", { pid })).report;
+    const p = Pl(pid);
+    const cost = p.scout.cost;
+    S.L.scout.pts -= cost;
+    S.L.scout.lv[String(pid)] = rep.step;
+    Object.assign(p, { scout: { ...rep, cost: cost + 1 }, a: rep.known, tags: rep.tags,
+      ovr: Math.round((rep.ovr[0] + rep.ovr[1]) / 2), pot: Math.round((rep.pot[0] + rep.pot[1]) / 2) });
+    hooks.render();
+    openPlayer(pid);
+  } catch (e) { U.toast(e.message, true); el.disabled = false; }
 };

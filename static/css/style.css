@@ -609,3 +609,40 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .ball.mid { background: var(--warn); border-color: var(--warn); }
 .ball.miss { background: #2a0e15; border-color: var(--bad); }
 .ball.cur { box-shadow: 0 0 0 2px var(--volt); }
+
+/* ===================================================================== v3: setup, fog, negotiation, rankings */
+.ovr.fog { width: auto; min-width: 46px; white-space: nowrap; clip-path: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%); padding: 0 10px; background: repeating-linear-gradient(135deg, #2a3040 0 4px, #222736 4px 8px); color: #c9d2e3; font-size: 11px; }
+.ovr.fog i { font-style: normal; opacity: .6; margin: 0 1px; }
+.ovr.fog.lg { min-width: 104px; font-size: 15px; }
+.setup-row { display: grid; grid-template-columns: 150px 1fr; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.setup-row:last-child { border-bottom: none; }
+.setup-row .hint { font-size: 11.5px; color: var(--mute); grid-column: 2; margin-top: -4px; }
+.setup-row .seg { display: flex; }
+.setup-row .seg button { flex: 1; }
+.toggle { position: relative; width: 46px; height: 24px; border-radius: 12px; background: #1d222c; border: 1px solid var(--line2); cursor: pointer; transition: .15s; }
+.toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--mute); transition: .15s; }
+.toggle.on { background: color-mix(in srgb, var(--volt) 30%, #1d222c); border-color: var(--volt); }
+.toggle.on::after { left: 24px; background: var(--volt); }
+.team-pick.big { grid-template-columns: repeat(5, 1fr); }
+.team-tile.out { opacity: .35; }
+.rank-row { display: grid; grid-template-columns: 34px 40px 1fr auto; gap: 12px; align-items: center; padding: 10px 6px; border-bottom: 1px solid var(--line); }
+.rank-row .rk { font-family: var(--display); font-weight: 800; font-size: 20px; }
+.rank-row.cut { border-bottom: 1px dashed color-mix(in srgb, var(--acc) 50%, transparent); }
+.rank-row.me { background: color-mix(in srgb, var(--acc) 7%, transparent); }
+.mv-up { color: var(--good); font: 700 10px var(--mono); }
+.mv-down { color: var(--bad); font: 700 10px var(--mono); }
+.share { height: 6px; background: rgba(255,255,255,.06); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+.share > i { display: block; height: 100%; background: linear-gradient(90deg, var(--acc), var(--volt)); }
+.race-row { display: grid; grid-template-columns: 22px 1fr 150px; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.race-row.fin .rk { color: var(--volt); }
+.nego-log { max-height: 180px; overflow: auto; display: grid; gap: 6px; margin: 12px 0; }
+.nego-log .you { justify-self: end; background: color-mix(in srgb, var(--acc) 14%, transparent); border: 1px solid color-mix(in srgb, var(--acc) 40%, transparent); padding: 6px 10px; font: 600 12px var(--mono); }
+.nego-log .them { justify-self: start; background: rgba(255,255,255,.04); border: 1px solid var(--line2); padding: 6px 10px; font-size: 12.5px; }
+.patience { display: inline-flex; gap: 4px; }
+.patience i { width: 14px; height: 14px; border-radius: 50%; background: rgba(255,255,255,.08); }
+.patience i.on { background: var(--good); box-shadow: 0 0 6px var(--good); }
+.energy-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--line2); font: 600 11px var(--mono); }
+.energy-chip b { color: var(--volt); }
+.lock { color: var(--warn); }
+.attr .v.unk { color: var(--mute); }
+.bar.unk { background: repeating-linear-gradient(90deg, rgba(255,255,255,.05) 0 6px, transparent 6px 10px); }

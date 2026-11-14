@@ -32,14 +32,14 @@ function franchise() {
     `<div class="grid g3" style="margin-bottom:16px">${cards}</div>
     <div class="grid g2">
       ${U.slab("How you earn FP", `<table class="tbl compact"><tbody>
-        ${[["Regular-season win", "+3"], ["Regular-season loss", "+1"], ["Rivalry win (Heated or hotter)", "+2"], ["Playoff game win", "+2"], ["Playoff series win", "+6"], ["Championship", "+15"], ["Player award (MVP, All-League…)", "+3 each"], ["All-Star selection", "+2 each"], ["All-Star contest winner", "+1–2"], ["Live-coaching calls won", "+1 each (max 3/game)"]].map(([a, b]) => `<tr><td class="l" style="font-family:var(--body)">${a}</td><td class="hl">${b}</td></tr>`).join("")}
+        ${[["Regular-season win", "+2"], ["Rivalry win (Heated or hotter)", "+1"], ["Playoff game win", "+2"], ["Playoff series win", "+5"], ["Championship", "+12"], ["Player award (MVP, All-League…)", "+2 each"], ["All-Star selection", "+1 each"], ["All-Star contest winner", "+1"], ["Live-coaching calls won", "+1 each (max 2/game)"]].map(([a, b]) => `<tr><td class="l" style="font-family:var(--body)">${a}</td><td class="hl">${b}</td></tr>`).join("")}
       </tbody></table>`)}
       ${U.slab("Recent earnings", log.length ? log.map((x) => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><span class="mono acc" style="width:40px">+${x.n}</span><span>${U.esc(x.txt)}</span><span class="sp"></span><span class="label">${x.s}</span></div>`).join("") : `<div class="empty">Win some games</div>`)}
     </div>
     <div style="height:16px"></div>
-    ${U.slab("League facilities", `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th class="l">Team</th>${tracks.map((x) => `<th class="c" title="${U.esc(x.name)}">${ICONS[x.key]}</th>`).join("")}<th>Total</th></tr></thead><tbody>
-      ${league.map((tm) => `<tr class="${tm.tid === L.user ? "me" : ""}"><td class="l">${U.tlink(tm, 18)}</td>${keys.map((k) => `<td class="c">${tm.upg?.[k] || 0}</td>`).join("")}<td class="hl">${Object.values(tm.upg || {}).reduce((x, y) => x + y, 0)}</td></tr>`).join("")}
-    </tbody></table></div><div class="dim" style="font-size:12px;margin-top:8px">AI teams earn and spend FP too. Arena, Analytics and Player Development edges are measured against the league average, so keeping up matters.</div>`)}`;
+    ${U.slab("League facilities", `<div class="tbl-wrap"><table class="tbl compact"><thead><tr><th class="l">Team</th><th class="l">Philosophy</th><th>FP</th>${tracks.map((x) => `<th class="c" title="${U.esc(x.name)}">${ICONS[x.key]}</th>`).join("")}<th>Total</th></tr></thead><tbody>
+      ${league.map((tm) => `<tr class="${tm.tid === L.user ? "me" : ""}"><td class="l">${U.tlink(tm, 18)}</td><td class="l"><span class="chip">${tm.tid === L.user ? "You" : U.esc(L.consts.philo?.[tm.philo] || "")}</span></td><td>${tm.tid === L.user ? tm.fp : "?"}</td>${keys.map((k) => `<td class="c">${tm.upg?.[k] || 0}</td>`).join("")}<td class="hl">${Object.values(tm.upg || {}).reduce((x, y) => x + y, 0)}</td></tr>`).join("")}
+    </tbody></table></div><div class="dim" style="font-size:12px;margin-top:8px">AI front offices earn FP the same way and decide every game day what to buy, based on their philosophy and how their season is going. Arena, Analytics and Player Development edges are measured against the league average, so keeping up matters.</div>`)}`;
 }
 ACT["buy-upg"] = (el) => {
   const k = el.dataset.k, t = me();

@@ -27,7 +27,7 @@ while len(mine) > 15:
     mine = [p for p in st["players"].values() if p["tid"] == 5]
 print("talk:", call(f"s/{sid}/act", {"type": "talk", "pid": mine[0]["id"], "approach": "praise"})["result"])
 print("talk again:", call(f"s/{sid}/act", {"type": "talk", "pid": mine[0]["id"], "approach": "praise"}).get("error"))
-print("upgrade:", call(f"s/{sid}/act", {"type": "upgrade", "key": "analytics"})["state"]["teams"][5]["upg"])
+print("upgrade (should be unaffordable at start):", call(f"s/{sid}/act", {"type": "upgrade", "key": "analytics"}).get("error"))
 
 for game in range(6):
     r = call(f"s/{sid}/live", {"cmd": "start"})
@@ -62,8 +62,8 @@ for game in range(6):
                 call(f"s/{sid}/live", {"cmd": "huddle", "choice": "fire"})
                 if t.get("read"):
                     call(f"s/{sid}/live", {"cmd": "def_read", "pid": t["read"]["pid"], "choice": "three"})
-        elif d["type"] == "break" and d.get("film"):
-            call(f"s/{sid}/live", {"cmd": "film", "zone": "rim"})
+        elif d["type"] == "break" and d.get("halftime"):
+            call(f"s/{sid}/live", {"cmd": "half", "choice": (d["halftime"].get("options") or ["rim"])[0] if isinstance((d["halftime"].get("options") or ["rim"])[0], str) else d["halftime"]["options"][0]["pid"]})
         elif d["type"] == "final_play":
             print("   final play!", call(f"s/{sid}/live", {"cmd": "final_play", "call": "iso", "acc": 0.03})["result"])
     st = call(f"s/{sid}/state")

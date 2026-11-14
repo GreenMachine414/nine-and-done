@@ -324,6 +324,7 @@ class Game:
             return False
         team.timeouts -= 1
         team.last_to = self.elapsed
+        self.last_to_run = self.run[1] if self.run[0] == 1 - side else 0   # what the huddle is reacting to
         for g in team.players:
             g.energy = min(100.0, g.energy + (8 if g.on else 3))
         self.T[1 - side].mo = 0.0
@@ -378,6 +379,7 @@ class Game:
         ro = sum(g.r("reb") for g in O) / 5
         rd = sum(g.r("reb") for g in D) / 5
         p = 0.235 + (ro - rd) * 0.0055 + (0.012 if three else 0) - (0.06 if blocked else 0)
+        p -= self.T[1 - o].mod("dreb", self.elapsed)
         if ftmiss:
             p -= 0.11
         p = clamp(p, 0.06, 0.40)
@@ -458,6 +460,7 @@ class Game:
             to_p += {"aggressive": 0.022, "conservative": -0.014}.get(sd["defense"], 0)
             to_p += (0.02 if late_clock else 0) - (0.02 if mode == "trans" else 0)
             to_p -= (OT.chem - 72) / 40 * 0.01
+            to_p += OT.mod("tov", now)
             if rng.random() < clamp(to_p, 0.05, 0.24):
                 self.stat(handler, "tov", 1, deltas)
                 r = rng.random()
@@ -520,7 +523,7 @@ class Game:
             star_mult = {"share": 0.8, "normal": 1.0, "heliocentric": 1.45}.get(so["star"], 1.0)
             ws = []
             for g in O:
-                w = (max(6, g.t["use"]) / 50.0) ** 0.75 * (g.ovr / 65.0) ** 1.3 * (0.6 + 0.4 * g.fat())
+                w = (max(6, g.t["use"]) / 50.0) ** 0.75 * (g.ovr / 65.0) ** 1.12 * (0.6 + 0.4 * g.fat())
                 if g.id == OT.top:
                     w *= star_mult
                 elif g.id in OT.stars:
@@ -529,7 +532,7 @@ class Game:
                     w *= 1.25 + (g.p.get("clutch", 50) - 50) / 200
                 if g.trait == "Diva":
                     w *= 1.12
-                w *= DT.mod_weight("focus_def", now, pid=g.id)
+                w *= DT.mod_weight("focus_def", now, pid=g.id) * OT.mod_weight("pw", now, pid=g.id)
                 ws.append(w)
             shooter = wchoice(rng, O, ws)
 
@@ -605,6 +608,7 @@ class Game:
             p += S.mood * 0.012
             p += OT.mod("make", now) + DT.mod("def", now)
             p += DT.mod("zone_def", now, zone=stype) + DT.mod("focus_def", now, pid=S.id)
+            p += OT.mod("pmake", now, pid=S.id)
             if forced:
                 p += METER_BONUS.get(forced.get("grade"), 0)
         p = clamp(p, 0.06, 0.9)
@@ -848,7 +852,7 @@ class Game:
                 break
             if ended:
                 return {"type": "break", "q": self.q - 1, "half": self.q == 3,
-                        "film": self.film_prompt() if self.q == 3 else None}
+                        "halftime": self.halftime_prompt() if self.q == 3 else None}
             if self.elapsed >= target:
                 return None
         return {"type": "final"}
@@ -934,28 +938,72 @@ class Game:
         self.ev(side, "coach", f"COACH: {txt}")
         return {"ok": ok, "txt": txt}
 
-    def huddle_prompt(self):
+    HUDDLE = {
+        "fire": "🔥 Fire them up",
+        "calm": "🫁 Catch your breath",
+        "focus": "📋 Lock in on the details",
+        "protect": "🏀 Value every possession",
+        "star": "⭐ Ride our hot hand",
+        "push": "⚡ Push the pace, they're gassed",
+        "boards": "💪 Win the glass",
+    }
+
+    def _huddle_facts(self):
         side = self.live_side
-        team = self.T[side]
+        team, opp = self.T[side], self.T[1 - side]
         avg_e = sum(g.energy for g in team.on) / 5
-        m = self.margin(side)
-        return {"margin": m, "energy": round(avg_e), "run": self.run[1] if self.run[0] == 1 - side else 0,
-                "tov": sum(g.s["tov"] for g in team.players)}
+        opp_e = sum(g.energy for g in opp.on) / 5
+        hot = max(team.players, key=lambda g: g.s["pts"])
+        hot_fg = hot.s["fgm"] / hot.s["fga"] if hot.s["fga"] else 0
+        return {"margin": self.margin(side), "energy": round(avg_e), "opp_energy": round(opp_e),
+                "run": max(self.run[1] if self.run[0] == 1 - side else 0, getattr(self, "last_to_run", 0)),
+                "tov": sum(g.s["tov"] for g in team.players),
+                "opp_oreb": sum(g.s["orb"] for g in opp.players),
+                "hot": {"pid": hot.id, "name": hot.name, "pts": hot.s["pts"], "fgm": hot.s["fgm"], "fga": hot.s["fga"]},
+                "_hot_ok": hot.s["fga"] >= 6 and hot_fg >= 0.5}
+
+    def _huddle_good(self, f):
+        good = set()
+        if f["energy"] < 72:
+            good.add("calm")
+        if f["run"] >= 6 or f["margin"] <= -8:
+            good.add("fire")
+        if f["margin"] >= 8:
+            good.add("focus")
+        if f["tov"] >= 8:
+            good.add("protect")
+        if f["_hot_ok"]:
+            good.add("star")
+        if f["opp_energy"] <= f["energy"] - 8 and f["opp_energy"] < 78:
+            good.add("push")
+        if f["opp_oreb"] >= 6:
+            good.add("boards")
+        if not good:
+            good.add("fire" if f["margin"] < 0 else "focus")
+        return good
+
+    def huddle_prompt(self):
+        f = self._huddle_facts()
+        good = self._huddle_good(f)
+        keys = list(self.HUDDLE)
+        pick = [self.rng.choice(sorted(good))]
+        others = [k for k in keys if k not in pick]
+        self.rng.shuffle(others)
+        opts = pick + others[:3]
+        self.rng.shuffle(opts)
+        out = {k: v for k, v in f.items() if not k.startswith("_")}
+        out["options"] = [{"key": k, "label": self.HUDDLE[k] if k != "star" else f"⭐ Ride {f['hot']['name']}"}
+                          for k in opts]
+        return out
 
     def resolve_huddle(self, choice):
         side = self.live_side
         team = self.T[side]
-        h = self.huddle_prompt()
-        if h["energy"] < 72:
-            key = "calm"         # gassed team: slow down, catch breath
-        elif h["run"] >= 6 or h["margin"] <= -8:
-            key = "fire"
-        elif h["tov"] >= 9 or h["margin"] >= 8:
-            key = "focus"        # sloppy or comfortable: lock in on details
-        else:
-            key = "fire" if h["margin"] < 0 else "focus"
-        ok = choice == key
+        f = self._huddle_facts()
+        good = self._huddle_good(f)
+        ok = choice in good
         coach = team.lvl("coaching")
+        boost = 1 + 0.1 * coach
         txt = ""
         if choice == "fire" and any(g.trait == "Hothead" for g in team.on) and self.rng.random() < 0.3:
             hh = next(g for g in team.on if g.trait == "Hothead")
@@ -965,22 +1013,174 @@ class Game:
             txt = f"{hh.name} came out of the huddle too hot — technical foul! "
             ok = False
         if ok:
-            team.mo = clamp(team.mo + 0.35, -1, 1)
-            self.add_mod(side, "make", 0.022 * (1 + 0.1 * coach), 200)
-            if key == "calm":
+            team.mo = clamp(team.mo + 0.3, -1, 1)
+            self.add_mod(side, "make", 0.02 * boost, 200)
+            if choice == "calm":
                 for g in team.on:
-                    g.energy = min(100, g.energy + 6)
+                    g.energy = min(100, g.energy + 7)
+            elif choice == "protect":
+                self.add_mod(side, "tov", -0.035 * boost, 300)
+            elif choice == "star":
+                self.add_mod(side, "pmake", 0.04 * boost, 300, pid=f["hot"]["pid"])
+                self.add_mod(side, "pw", 0, 300, pid=f["hot"]["pid"], w=1.4)
+            elif choice == "push":
+                self.add_mod(side, "make", 0.015 * boost, 240)
+            elif choice == "boards":
+                self.add_mod(side, "dreb", 0.05 * boost, 300)
             txt += {"fire": "The bench is on its feet. Your guys come out swinging.",
                     "calm": "Deep breaths. Legs are back under them.",
-                    "focus": "Locked in. Crisp sets, no wasted possessions."}[key]
+                    "focus": "Locked in. Crisp sets, no wasted possessions.",
+                    "protect": "Ball security drilled home. No more gifts.",
+                    "star": f"Everything runs through {f['hot']['name']} now — and he's feeling it.",
+                    "push": "Run them off the floor. They can't keep up.",
+                    "boards": "Bodies on bodies. Nobody gets a second shot."}.get(choice, "That landed.")
         else:
             self.add_mod(side, "make", -0.016, 200)
-            txt += {"fire": "Wrong message — they needed a breather, not a pep talk.",
-                    "calm": "Too soft. Nobody responded.",
-                    "focus": "The X's and O's went in one ear and out the other."}.get(choice, "That didn't land.")
+            reason = []
+            if "calm" in good:
+                reason.append("they were gassed")
+            if "fire" in good:
+                reason.append("they needed a jolt")
+            if "protect" in good:
+                reason.append("the turnovers were killing you")
+            if "boards" in good:
+                reason.append("you were getting crushed on the glass")
+            if "push" in good:
+                reason.append("the other team was exhausted")
+            if "star" in good:
+                reason.append(f"{f['hot']['name']} had the hot hand")
+            txt += "That message missed the moment" + (f" — {', and '.join(reason[:2])}." if reason else ".")
+        self.last_to_run = 0
         self.challenges.append({"type": "huddle", "ok": ok})
         self.ev(side, "coach", f"COACH: {txt}")
         return {"ok": ok, "txt": txt}
+
+    # ---- halftime adjustments: one of several challenges, picked at random each game
+    def halftime_prompt(self):
+        side = self.live_side
+        kind = self.rng.choice(["film", "matchup", "mismatch", "tempo"])
+        team, opp = self.T[side], self.T[1 - side]
+        if kind == "film":
+            self.half_ctx = {"kind": "film"}
+            return {"kind": "film", **(self.film_prompt() or {"zones": {}})}
+        if kind == "matchup":
+            star = max(opp.players, key=lambda g: g.s["pts"] + g.ovr * 0.05)
+            pool = sorted([g for g in team.players if g.avail()], key=lambda g: -g.ovr)[:8]
+            cands = []
+            for g in (max(pool, key=lambda g: g.a["perd"]), max(pool, key=lambda g: g.a["intd"]),
+                      max(pool, key=lambda g: g.ovr)):
+                if g not in cands:
+                    cands.append(g)
+            for g in pool:
+                if len(cands) >= 3:
+                    break
+                if g not in cands:
+                    cands.append(g)
+            self.half_ctx = {"kind": kind, "star": star.id, "cands": [g.id for g in cands]}
+            return {"kind": kind, "star": {"pid": star.id, "name": star.name, "pts": star.s["pts"],
+                                           "zones": {k: list(v) for k, v in star.z.items()}},
+                    "options": [{"pid": g.id, "name": g.name, "pos": POS[g.pi], "perd": g.a["perd"],
+                                 "intd": g.a["intd"]} for g in cands]}
+        if kind == "mismatch":
+            os_ = sorted(team.on, key=lambda g: (g.pi, g.slot))
+            ds_ = sorted(opp.on, key=lambda g: (g.pi, g.slot))
+            opts = []
+            for g, x in zip(os_, ds_):
+                inside = max(g.a["ins"], g.a["post"])
+                outside = max(g.a["three"], g.a["mid"])
+                edge = max(inside - x.a["intd"], outside - x.a["perd"])
+                opts.append({"pid": g.id, "name": g.name, "pos": POS[g.pi], "inside": inside, "outside": outside,
+                             "vs": x.name, "vs_perd": x.a["perd"], "vs_intd": x.a["intd"], "_edge": edge})
+            self.rng.shuffle(opts)
+            opts = opts[:4]
+            self.half_ctx = {"kind": kind, "edges": {o["pid"]: o["_edge"] for o in opts}}
+            return {"kind": kind, "options": [{k: v for k, v in o.items() if not k.startswith("_")} for o in opts]}
+        # tempo
+        bench_e = lambda t: sum(g.energy for g in t.players if not g.on and g.avail()) / max(
+            1, sum(1 for g in t.players if not g.on and g.avail()))
+        depth = lambda t: sum(sorted((g.ovr for g in t.players), reverse=True)[5:9]) / 4
+        info = {"margin": self.margin(side), "our_bench": round(depth(team), 1), "their_bench": round(depth(opp), 1),
+                "our_energy": round(bench_e(team)), "their_energy": round(bench_e(opp)),
+                "our_tov": sum(g.s["tov"] for g in team.players)}
+        self.half_ctx = {"kind": kind, **info}
+        return {"kind": kind, **info, "options": ["slow", "normal", "fast"]}
+
+    def resolve_halftime(self, choice):
+        side = self.live_side
+        ctx = getattr(self, "half_ctx", None) or {"kind": "film"}
+        kind = ctx["kind"]
+        coach = self.T[side].lvl("coaching")
+        boost = 1 + 0.1 * coach
+        if kind == "film":
+            return self.resolve_film(choice)
+        if kind == "matchup":
+            star = self.by_id(ctx["star"])
+            paint = star.z["rim"][1] + star.z["post"][1]
+            outside = star.z["three"][1] + star.z["mid"][1]
+            attr = "intd" if paint > outside or (paint == outside and star.pi >= 3) else "perd"
+            cands = [self.by_id(i) for i in ctx["cands"]]
+            try:
+                pick = self.by_id(int(choice))
+            except (TypeError, ValueError):
+                pick = None
+            if pick not in cands:
+                pick = None
+            ok = pick is not None and pick.a[attr] >= max(g.a[attr] for g in cands)
+            pick = pick or cands[-1]
+            if ok:
+                self.add_mod(side, "focus_def", -0.065 * boost, 99999, pid=star.id, w=0.7)
+                txt = f"{pick.name} shadows {star.name} all half. Smart assignment."
+            else:
+                self.add_mod(side, "focus_def", 0.035, 99999, pid=star.id, w=1.1)
+                best = max(cands, key=lambda g: g.a[attr])
+                txt = f"{star.name} is cooking {pick.name if pick else 'him'}. {best.name} was the better " \
+                      f"{'post' if attr == 'intd' else 'perimeter'} defender for that job."
+            res_type = "matchup"
+        elif kind == "mismatch":
+            edges = ctx["edges"]
+            try:
+                pid = int(choice)
+            except (TypeError, ValueError):
+                pid = -1
+            if pid not in edges:
+                pid = min(edges, key=edges.get)
+            ok = edges.get(pid, -99) >= max(edges.values())
+            g = self.by_id(pid)
+            if ok:
+                self.add_mod(side, "pmake", 0.045 * boost, 99999, pid=pid)
+                self.add_mod(side, "pw", 0, 99999, pid=pid, w=1.35)
+                txt = f"You found the soft spot: feed {g.name} his matchup all half."
+            else:
+                self.add_mod(side, "pw", 0, 99999, pid=pid, w=1.15)
+                self.add_mod(side, "make", -0.01, 99999)
+                best = self.by_id(max(edges, key=edges.get))
+                txt = f"Forcing it to {g.name} gums up the offense. {best.name} had the real mismatch."
+            res_type = "mismatch"
+        else:
+            m = ctx["margin"]
+            if ctx["our_energy"] >= ctx["their_energy"] + 5 and ctx["our_bench"] >= ctx["their_bench"]:
+                right = "fast"
+            elif m >= 6 or ctx["our_tov"] >= 9:
+                right = "slow"
+            elif m <= -6 and ctx["our_bench"] >= ctx["their_bench"] - 2:
+                right = "fast"
+            else:
+                right = "normal"
+            ok = choice == right
+            self.set_strategy(side, "pace", choice if choice in PACE_SECS else "normal")
+            if ok:
+                self.add_mod(side, "make", 0.016 * boost, 99999)
+                txt = {"fast": "Run and gun. Your fresher legs take over.",
+                       "slow": "Shorten the game, value every trip. Textbook.",
+                       "normal": "Stay the course. Your rhythm holds."}[right]
+            else:
+                self.add_mod(side, "make", -0.012, 99999)
+                txt = f"The tempo plan backfires. The situation called for a {right} pace."
+            res_type = "tempo"
+        self.challenges.append({"type": res_type, "ok": ok})
+        self.ev(side, "coach", f"COACH: {txt}")
+        return {"ok": ok, "txt": txt}
+
 
     def call_final_play(self, call, acc):
         grade = meter_grade(acc, self.T[self.live_side].lvl("coaching"))

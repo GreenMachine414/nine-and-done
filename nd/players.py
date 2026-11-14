@@ -1,7 +1,7 @@
 """Player model: positions, attributes, ceilings, tendencies, generation, development, contracts."""
 import random
 
-from .data import FIRST_NAMES, LAST_NAMES, SCHOOLS, MIN_SALARY, MAX_SALARY
+from .data import FIRST_NAMES, LAST_NAMES, FIRST_NAMES_US, LAST_NAMES_US, SCHOOLS, MIN_SALARY, MAX_SALARY
 
 POS = ["PG", "SG", "SF", "PF", "C"]
 
@@ -111,14 +111,37 @@ def calc_ovr(p):
     return int(round(sum(p["a"][k] * w[k] for k in ATTRS)))
 
 
+# Internal ratings ("raw") drive the engine and economy. Everything shown to players uses a 2K-style display
+# scale: a few stars in the 90-club, 99 max, rotation guys in the 70s.
+_DISP = [(0, 25), (30, 45), (40, 55), (50, 64), (60, 72), (70, 79), (78, 84), (84, 88), (88, 91), (93, 95),
+         (98, 99), (200, 99)]
+
+
+def disp(raw):
+    raw = float(raw)
+    for (x0, y0), (x1, y1) in zip(_DISP, _DISP[1:]):
+        if raw <= x1:
+            return int(round(y0 + (y1 - y0) * (raw - x0) / (x1 - x0)))
+    return 99
+
+
+def undisp(d):
+    """Inverse of disp(): the raw rating that displays as d."""
+    for (x0, y0), (x1, y1) in zip(_DISP, _DISP[1:]):
+        if d <= y1 and y1 > y0:
+            return x0 + (x1 - x0) * (d - y0) / (y1 - y0)
+    return 100.0
+
+
 def stars_for(ovr):
-    if ovr >= 84:
+    d = disp(ovr)
+    if d >= 88:
         return 5
-    if ovr >= 76:
+    if d >= 80:
         return 4
-    if ovr >= 67:
+    if d >= 73:
         return 3
-    if ovr >= 57:
+    if d >= 66:
         return 2
     return 1
 
@@ -191,7 +214,13 @@ def gen_tendencies(p, prev=None, rng=random):
 
 def _name(rng, used):
     for _ in range(50):
-        n = (rng.choice(FIRST_NAMES), rng.choice(LAST_NAMES))
+        r = rng.random()
+        if r < 0.62:      # mostly American names
+            n = (rng.choice(FIRST_NAMES_US), rng.choice(LAST_NAMES_US))
+        elif r < 0.8:     # mixed
+            n = (rng.choice(FIRST_NAMES_US), rng.choice(LAST_NAMES))
+        else:             # international
+            n = (rng.choice(FIRST_NAMES), rng.choice(LAST_NAMES))
         if n not in used:
             used.add(n)
             return n
@@ -245,6 +274,30 @@ def generate(rng, pid, target_ovr, age, pos=None, used_names=None, season=0):
     refresh(p)
     p["hist"].append({"s": season, "ovr": p["ovr"], "age": age})
     return p
+
+
+SCOUT_MAX_STEP = 4
+
+
+def scout_report(p, step, scouting=0):
+    """Fog-of-war view of a prospect for a team with `step` scouting visits and the given scouting upgrade.
+    Returns display-scale ranges for OVR/POT and only the attributes uncovered so far."""
+    r = random.Random(p["id"] * 7919 + 17)
+    order = list(ATTRS)
+    r.shuffle(order)
+    f_o, f_p = r.uniform(0.15, 0.85), r.uniform(0.15, 0.85)
+    step = max(0, min(SCOUT_MAX_STEP, step))
+    n_known = min(len(ATTRS), 4 + scouting + 3 * step)
+    known = {k: p["a"][k] for k in order[:n_known]}
+    shrink = 1 - 0.1 * scouting
+    wo = [7.0, 5.0, 3.0, 1.5, 0.0][step] * shrink
+    wp = [10.0, 8.0, 6.0, 4.0, 2.0][step] * shrink
+    lo_o = p["ovr"] - f_o * 2 * wo
+    lo_p = p["pot"] - f_p * 2 * wp
+    ovr = [disp(lo_o), disp(lo_o + 2 * wo)]
+    pot = [max(ovr[0], disp(lo_p)), min(99, max(ovr[1], disp(lo_p + 2 * wp)))]
+    return {"step": step, "max": SCOUT_MAX_STEP, "known": known, "ovr": ovr, "pot": pot,
+            "tags": p["tags"] if step >= 2 else []}
 
 
 def fuzz_pot(p, scouting=0):

@@ -346,7 +346,7 @@ function scoreline() {
 
 function showDecision(d) {
   if (d.type === "break") {
-    if (d.film) return showFilm(d.film);
+    if (d.halftime) return showHalftime(d.halftime);
     openModal(modalHTML(`End of ${U.qLabel(d.q)}`, `<h2 style="margin:6px 0 10px">${scoreline()}</h2>
       <p class="dim">Use the clipboard to change your lineup or strategy before the next quarter starts.</p>
       <button class="btn pri lg" style="width:100%" data-act="coach-continue">Start ${U.qLabel(d.q + 1)} →</button>`));
@@ -380,12 +380,12 @@ function showHuddle(h, read) {
       <div class="stat-tile"><div class="label">Score</div><div class="v" style="font-size:16px">${h.margin > 0 ? "+" + h.margin : h.margin}</div></div>
       <div class="stat-tile"><div class="label">Floor energy</div><div class="v" style="font-size:16px">${h.energy}</div></div>
       <div class="stat-tile"><div class="label">Their run</div><div class="v" style="font-size:16px">${h.run}-0</div></div>
-      <div class="stat-tile"><div class="label">Our TOs</div><div class="v" style="font-size:16px">${h.tov}</div></div></div>
+      <div class="stat-tile"><div class="label">Our TOs</div><div class="v" style="font-size:16px">${h.tov}</div></div>
+      <div class="stat-tile"><div class="label">Their energy</div><div class="v" style="font-size:16px">${h.opp_energy ?? "—"}</div></div>
+      <div class="stat-tile"><div class="label">Their off. boards</div><div class="v" style="font-size:16px">${h.opp_oreb ?? "—"}</div></div>
+      <div class="stat-tile" style="grid-column:span 2"><div class="label">Our hot hand</div><div class="v" style="font-size:14px">${h.hot ? `${U.esc(h.hot.name)} · ${h.hot.pts} pts (${h.hot.fgm}/${h.hot.fga})` : "—"}</div></div></div>
     <p class="dim" style="margin-top:0">Read the room. The right message gives a boost; the wrong one costs you.</p>
-    <div class="col" style="gap:8px">
-      <button class="btn lg" data-act="huddle" data-c="fire">🔥 Fire them up</button>
-      <button class="btn lg" data-act="huddle" data-c="calm">🫁 Calm down, catch your breath</button>
-      <button class="btn lg" data-act="huddle" data-c="focus">📋 Lock in on the details</button></div>`));
+    <div class="col" style="gap:8px">${(h.options || []).map((o) => `<button class="btn lg" data-act="huddle" data-c="${o.key}">${U.esc(o.label)}</button>`).join("")}</div>`));
 }
 ACT["huddle"] = async (el) => {
   try {
@@ -415,19 +415,48 @@ ACT["read"] = async (el) => {
   } catch (e) { U.toast(e.message, true); closeModal(); }
 };
 
+function showHalftime(h) {
+  if (h.kind === "film") return showFilm(h);
+  if (h.kind === "matchup") {
+    const z = h.star.zones;
+    const zl = [["three", "3PT"], ["mid", "MID"], ["rim", "RIM"], ["post", "POST"]].map(([k, l]) => `<div class="stat-tile"><div class="label">${l}</div><div class="v" style="font-size:16px">${z[k][0]}/${z[k][1]}</div></div>`).join("");
+    openModal(modalHTML("Halftime · defensive assignment", `<h2 style="margin:6px 0 4px">Who guards ${U.esc(h.star.name)}?</h2>
+      <p class="dim" style="margin-top:0">${U.esc(h.star.name)} has ${h.star.pts} points. Look at where he's scoring, then pick the right kind of defender: a perimeter stopper or a paint protector.</p>
+      <div class="grid g4" style="gap:8px;margin-bottom:12px">${zl}</div>
+      <div class="col" style="gap:8px">${h.options.map((o) => `<button class="film-z" data-act="half" data-c="${o.pid}"><div class="row"><b>${U.esc(o.name)}</b><span class="pos">${o.pos}</span><span class="sp"></span><span class="mono dim">Perimeter D ${o.perd} · Interior D ${o.intd}</span></div></button>`).join("")}</div>`, "wide"));
+    return;
+  }
+  if (h.kind === "mismatch") {
+    openModal(modalHTML("Halftime · hunt the mismatch", `<h2 style="margin:6px 0 4px">Where do we attack?</h2>
+      <p class="dim" style="margin-top:0">Compare each scorer's best skill with his defender's matching rating: inside scoring against Interior D, outside shooting against Perimeter D. Feed the biggest edge all half.</p>
+      <div class="col" style="gap:8px">${h.options.map((o) => `<button class="film-z" data-act="half" data-c="${o.pid}"><div class="row"><b>${U.esc(o.name)}</b><span class="pos">${o.pos}</span><span class="sp"></span><span class="mono dim">Inside ${o.inside} · Outside ${o.outside}</span></div>
+        <div class="row" style="margin-top:4px"><span class="label">guarded by ${U.esc(o.vs)}</span><span class="sp"></span><span class="mono dim">Perimeter D ${o.vs_perd} · Interior D ${o.vs_intd}</span></div></button>`).join("")}</div>`, "wide"));
+    return;
+  }
+  openModal(modalHTML("Halftime · second-half tempo", `<h2 style="margin:6px 0 4px">${scoreline()}</h2>
+    <p class="dim" style="margin-top:0">Set the second-half pace. Fresher legs and a deeper bench favor running; a lead (or sloppy ball-handling) favors slowing it down.</p>
+    <div class="grid g4" style="gap:8px;margin-bottom:12px">
+      <div class="stat-tile"><div class="label">Bench quality</div><div class="v" style="font-size:15px">${h.our_bench} <span class="mute">vs ${h.their_bench}</span></div></div>
+      <div class="stat-tile"><div class="label">Bench energy</div><div class="v" style="font-size:15px">${h.our_energy} <span class="mute">vs ${h.their_energy}</span></div></div>
+      <div class="stat-tile"><div class="label">Margin</div><div class="v" style="font-size:15px">${h.margin > 0 ? "+" : ""}${h.margin}</div></div>
+      <div class="stat-tile"><div class="label">Our turnovers</div><div class="v" style="font-size:15px">${h.our_tov}</div></div></div>
+    <div class="grid g3" style="gap:8px">${[["slow", "🐢 Slow it down"], ["normal", "⚖️ Stay the course"], ["fast", "⚡ Push the pace"]].map(([k, l]) => `<button class="film-z" data-act="half" data-c="${k}"><div class="v" style="font-size:15px">${l}</div></button>`).join("")}</div>`, "wide"));
+}
+ACT["half"] = async (el) => {
+  try {
+    const r = await liveCmd({ cmd: "half", choice: el.dataset.c });
+    openModal(modalHTML("Halftime adjustment", resultHTML(r.result, "Start the second half →")));
+  } catch (e) { U.toast(e.message, true); closeModal(); }
+};
+
 function showFilm(f) {
   const z = f.zones;
-  const zl = [["three", "3PT"], ["mid", "Mid-range"], ["rim", "At the rim"], ["post", "Post-ups"]].map(([k, l]) => `<button class="film-z" data-act="film" data-z="${k}"><div class="label">${l}</div><div class="v">${z[k].pts} pts</div><div class="mono dim" style="font-size:11px">${z[k].fgm}/${z[k].fga} FG</div></button>`).join("");
+  const zl = [["three", "3PT"], ["mid", "Mid-range"], ["rim", "At the rim"], ["post", "Post-ups"]].map(([k, l]) => `<button class="film-z" data-act="half" data-c="${k}"><div class="label">${l}</div><div class="v">${z[k]?.pts ?? 0} pts</div><div class="mono dim" style="font-size:11px">${z[k]?.fgm ?? 0}/${z[k]?.fga ?? 0} FG</div></button>`).join("");
   openModal(modalHTML("Halftime film session", `<h2 style="margin:6px 0 4px">${scoreline()}</h2>
     <p class="dim" style="margin-top:0">Here's how they scored in the first half. Pick the zone your defense will sell out to take away in the second half. Guess right and it dries up; guess wrong and they'll find it even easier.</p>
     <div class="grid g4" style="gap:8px">${zl}</div>`, "wide"));
 }
-ACT["film"] = async (el) => {
-  try {
-    const r = await liveCmd({ cmd: "film", zone: el.dataset.z });
-    openModal(modalHTML("Film session", resultHTML(r.result, "Start the second half →")));
-  } catch (e) { U.toast(e.message, true); closeModal(); }
-};
+
 
 const CALLS = [["iso", "Isolation", "Clear out for your best player"], ["three", "Pick-and-pop for three", "Your best shooter, open look from deep"], ["pnr", "Pick-and-roll to the rim", "Your best finisher attacks the basket"], ["post", "Post entry", "Feed your best post scorer"]];
 function showFinalPlay(d) {

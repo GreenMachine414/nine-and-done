@@ -12,7 +12,8 @@ import webbrowser
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
-from nd import league as LG, trade as TR, players as P, franchise as FR
+from nd import league as LG, trade as TR, players as P, franchise as FR, office as OF
+from nd.data import CONFERENCES
 from nd.data import TEAMS, SALARY_CAP, HARD_APRON, ROSTER_MAX, ROSTER_MIN, TRADE_DEADLINE_DAY, SEASON_DAYS
 from nd.store import Store
 
@@ -36,16 +37,38 @@ def view(L):
     out = dict(L)
     out.pop("draft_log", None)
     out["players"] = {}
+    sc_lvl = FR.lvl(L, L["user"], "scouting")
+    D = P.disp
     for k, p in L["players"].items():
         q = dict(p)
         q.pop("t", None)
         q["t"] = {kk: vv for kk, vv in p["t"].items() if kk != "_n"}
         q["tv"] = TR.player_value(L, p)
-        if p["tid"] == -2:
-            q["scout"] = P.fuzz_pot(p, FR.lvl(L, L["user"], "scouting"))
+        # everything the browser sees uses the 2K-style display scale
+        q["ovr"], q["pot"] = D(p["ovr"]), D(p["pot"])
+        q["hist"] = [{**h, "ovr": D(h["ovr"])} for h in p.get("hist", [])]
+        if p["tid"] == -2 and p.get("prospect"):
+            rep = P.scout_report(p, L["scout"]["lv"].get(k, 0), sc_lvl)
+            rep["cost"] = OF.scout_cost(L, p["id"])
+            q.update({"fog": True, "scout": rep, "a": rep["known"], "tags": rep["tags"], "t": None, "tv": None,
+                      "ovr": round(sum(rep["ovr"]) / 2), "pot": round(sum(rep["pot"]) / 2)})
+            q["stars"] = P.stars_for(P.undisp(q["ovr"]))
+            q["pstars"] = P.stars_for(P.undisp(q["pot"]))
         if p["tid"] == -1:
             q["ask"] = P.contract_ask(p, LG.fa_mood(L, L["user"]))
         out["players"][k] = q
+    if L.get("offseason"):
+        out["offseason"] = {**L["offseason"], "report": [{**r, "before": D(r["before"]), "after": D(r["after"])}
+                                                           for r in L["offseason"].get("report", [])]}
+    out["retired"] = [{**r, "peak": D(r["peak"])} for r in L.get("retired", [])]
+    race = LG.award_race(L) if L["phase"] == "regular" and L["day"] >= 1 else {}
+    race_out = {}
+    for key, rows in race.items():
+        top = rows[:10 if key == "MVP" else 6]
+        best = top[0][1] if top else 1
+        lo = min((s for _, s in top), default=0)
+        race_out[key] = [{"pid": pid, "score": round(sc, 2),
+                          "share": round(100 * (sc - lo + 1) / max(1e-6, best - lo + 1))} for pid, sc in top]
     out["picks"] = [{**pk, "tv": TR.pick_value(L, pk, None, ranks), "label": TR.pick_label(L, pk)}
                     for pk in L["picks"]]
     ok, why = LG.trades_open(L)
@@ -61,6 +84,9 @@ def view(L):
         "chem": [FR.chemistry(L, t["tid"]) for t in L["teams"]],
         "live": bool(L.get("live")),
         "three_pending": FR.user_needs_three(L),
+        "race": race_out,
+        "conf_standings": LG.conf_standings(L) if L["settings"].get("conf") else None,
+        "strength_disp": [D(LG.team_strength(L, t["tid"])) for t in L["teams"]],
     }
     out["consts"] = {"cap": SALARY_CAP, "apron": HARD_APRON, "roster_max": ROSTER_MAX, "roster_min": ROSTER_MIN,
                      "deadline": TRADE_DEADLINE_DAY, "days": SEASON_DAYS, "mle": LG.MLE,
@@ -69,7 +95,7 @@ def view(L):
                      "tracks": [{"key": k, "name": n, "desc": d,
                                  "fx": [FR.effect_text(k, l) for l in range(FR.MAX_LVL + 1)]}
                                 for k, n, d in FR.TRACKS],
-                     "as_teams": FR.AS_TEAMS}
+                     "as_teams": FR.AS_TEAMS, "conferences": CONFERENCES, "philo": FR.PHILO_LABEL}
     return out
 
 
@@ -84,7 +110,7 @@ def live_meta(L, g):
         for gp in t.players:
             p = gp.p
             names[str(gp.id)] = {"n": P.short_name(p), "fn": P.full_name(p), "pos": p["pos"], "num": p["num"],
-                                 "ovr": p["ovr"], "trait": p.get("trait"), "morale": p.get("morale", 65)}
+                                 "ovr": P.disp(p["ovr"]), "trait": p.get("trait"), "morale": p.get("morale", 65)}
     return {"gid": lv["gid"], "h": lv["h"], "a": lv["a"], "side": g.live_side, "po": lv["po"],
             "series": lv["series"], "rival": FR.rival_tier(L, lv["h"], lv["a"]),
             "rosters": [[gp.id for gp in t.players] for t in g.T], "names": names,
@@ -144,7 +170,7 @@ def live(sid, L, body):
             LIVE.pop(sid, None)
             return {"events": ev, "snap": snap, "final": True, "gid": doc["gid"],
                     "challenges": doc.get("challenges", [])}
-        if d and d["type"] == "break" and d.get("film"):
+        if d and d["type"] == "break" and d.get("halftime"):
             sess["film"] = True
         extra["decision"] = d
     elif cmd == "sim_rest":
@@ -167,11 +193,11 @@ def live(sid, L, body):
             raise LG.GameError("You already made a defensive adjustment this quarter.")
         sess["dr"].add(key)
         extra["result"] = g.resolve_def_read(int(body["pid"]), body.get("choice"))
-    elif cmd == "film":
+    elif cmd in ("film", "half"):
         if not sess.get("film"):
-            raise LG.GameError("Film sessions happen at halftime.")
+            raise LG.GameError("Halftime adjustments happen at halftime.")
         sess["film"] = False
-        extra["result"] = g.resolve_film(body.get("zone"))
+        extra["result"] = g.resolve_halftime(body.get("choice") or body.get("zone"))
     elif cmd == "final_play":
         extra["result"] = g.call_final_play(body.get("call"), float(body.get("acc", 1)))
     elif cmd == "sub":
@@ -193,6 +219,14 @@ def act(sid, L, body):
         raise LG.GameError("You have a live game in progress. Finish it (or sim the rest) first.")
     if t == "upgrade":
         FR.buy(L, body.get("key"))
+    elif t == "nego_open":
+        res["nego"] = OF.open_talks(L, int(body["pid"]), body.get("kind", "fa"))
+    elif t == "negotiate":
+        res["nego"] = OF.negotiate(L, int(body["pid"]), body.get("sal"), body.get("yrs"), body.get("kind", "fa"))
+    elif t == "scout":
+        res["report"] = OF.scout(L, int(body["pid"]))
+    elif t == "untouchable":
+        res["pid"] = OF.set_untouchable(L, int(body.get("pid") or 0))
     elif t == "talk":
         res["talk"] = FR.talk(L, int(body["pid"]), body.get("approach"))
     elif t == "allstar_three":
@@ -341,7 +375,8 @@ class H(BaseHTTPRequestHandler):
             if method == "GET":
                 return self.send_json(store.list_saves(owner))
             b = self.body()
-            L = LG.new_league(b.get("name"), int(b.get("team", 0)), b.get("mode", "classic"))
+            L = LG.new_league(b.get("name"), int(b.get("team", 0)), b.get("mode", "classic"),
+                              settings=b.get("settings") or {})
             if L["phase"] == "draft":
                 LG.draft_until_user(L, random.Random())
             sid = store.create(L, owner)
@@ -376,7 +411,7 @@ class H(BaseHTTPRequestHandler):
                     p = L["players"].get(str(pid))
                     if p:
                         names[pid] = {"n": P.short_name(p), "fn": P.full_name(p), "pos": p["pos"],
-                                      "num": p["num"], "ovr": p["ovr"]}
+                                      "num": p["num"], "ovr": P.disp(p["ovr"])}
                     else:
                         r = next((x for x in L["retired"] if str(x["id"]) == str(pid)), None)
                         names[pid] = {"n": r["name"] if r else "Retired", "fn": r["name"] if r else "Retired",

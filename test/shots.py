@@ -14,7 +14,9 @@ w, h = 1500, 1000
 for route in sys.argv[2:]:
     name = route.replace("/", "_").replace("?", "_").replace("=", "") or "landing"
     path = os.path.join(OUT, f"{name}.png")
-    url = f"http://127.0.0.1:8777/?sid={sid}#/{route}" if sid != "0" else "http://127.0.0.1:8777/"
+    owner = os.environ.get("ND_OWNER", "")
+    oq = f"&owner={owner}" if owner else ""
+    url = f"http://127.0.0.1:8777/?sid={sid}{oq}#/{route}" if sid != "0" else f"http://127.0.0.1:8777/?x=1{oq}"
     prof = tempfile.mkdtemp()
     if os.path.exists(path):
         os.remove(path)

@@ -44,7 +44,7 @@ const click = (sel) => ev(`(() => { const e = document.querySelector(${JSON.stri
 try {
   await connect();
   await send("Page.enable");
-  await send("Page.navigate", { url: `http://127.0.0.1:8777/?sid=${sid}#/live` });
+  await send("Page.navigate", { url: `http://127.0.0.1:8777/?sid=${sid}${process.env.ND_OWNER ? "&owner=" + process.env.ND_OWNER : ""}#/live` });
   await sleep(2500);
   await click('[data-seg="g-speed"] button[data-v="160"]');
   const seen = new Set();
@@ -67,9 +67,9 @@ try {
     console.log("prompt:", kicker);
     if (kicker === "Final") { await shot("ui_final"); break; }
     if (kicker === "Momentum alert") { (await click('[data-act="dec-timeout"]:not([disabled])')) || (await click('[data-act="dec-read"]')); continue; }
-    if (kicker === "Timeout huddle") { await click('[data-act="huddle"][data-c="fire"]'); continue; }
+    if (kicker === "Timeout huddle") { await click('[data-act="huddle"]'); continue; }
     if (kicker === "Defensive read") { await click('[data-act="read"][data-c="paint"]'); continue; }
-    if (kicker === "Halftime film session") { await click('[data-act="film"][data-z="three"]'); continue; }
+    if (kicker.startsWith("Halftime") && kicker !== "Halftime adjustment") { await click('[data-act="half"]'); continue; }
     if (kicker === "Draw up the final play") { await click('[data-act="fp-call"][data-c="iso"]'); continue; }
     if (kicker === "Execute!") { await sleep(300); await click(".meter-btn"); await sleep(1200); continue; }
     if (kicker === "Huddle result" && await ev(`!!document.querySelector('[data-act="dec-read"]')`) && Math.random() < 0.5) { await click('[data-act="dec-read"]'); continue; }

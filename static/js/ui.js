@@ -24,6 +24,16 @@ const GLYPHS = {
   wave: `<path d="M14 56 C25 36 41 36 50 52 C57 64 71 64 86 42" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round"/><path d="M14 74 C25 58 41 58 50 70 C57 79 71 79 86 64" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" opacity=".6"/>`,
   comet: `<circle cx="62" cy="38" r="14"/><path d="M53 48 L16 84 L28 63 L14 68 L45 36 Z" opacity=".75"/>`,
   fang: `<path d="M32 22 C32 48 38 64 44 80 C47 62 47 44 47 22 Z"/><path d="M68 22 C68 48 62 64 56 80 C53 62 53 44 53 22 Z"/>`,
+  pickaxe: `<path d="M18 36 C34 20 66 20 82 36 C66 30 34 30 18 36 Z"/><rect x="46" y="28" width="8" height="54" rx="2"/>`,
+  axe: `<rect x="47" y="16" width="7" height="68" rx="2"/><path d="M54 22 C72 22 82 34 82 48 C72 44 62 44 54 46 Z"/>`,
+  owl: `<path d="M22 30 L34 40 L50 34 L66 40 L78 30 L74 62 C70 76 60 82 50 82 C40 82 30 76 26 62 Z"/><circle cx="39" cy="52" r="8" fill="#000"/><circle cx="61" cy="52" r="8" fill="#000"/><path d="M46 62 L50 70 L54 62 Z" fill="#000"/>`,
+  swirl: `<path d="M50 18 C72 18 84 34 80 52 C76 68 58 74 48 66 C40 60 42 48 50 46 C58 44 60 54 54 56" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round"/><path d="M26 70 L40 62 M20 54 L34 50" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>`,
+  tree: `<path d="M50 12 L72 42 H62 L78 62 H58 V84 H42 V62 H22 L38 42 H28 Z"/>`,
+  stinger: `<path d="M30 80 C30 56 40 46 54 44 C66 42 72 34 70 24 L80 30 C82 44 72 54 58 56 C46 58 42 66 44 80 Z"/><path d="M70 24 L76 12 L82 28 Z"/>`,
+  tusk: `<path d="M26 26 C26 58 40 76 66 76 C52 70 40 58 38 26 Z"/><path d="M74 26 C74 48 70 58 62 64 C64 52 62 40 62 26 Z" opacity=".6"/>`,
+  jaw: `<path d="M14 40 L86 34 L80 44 L70 40 L62 48 L54 42 L46 50 L38 44 L30 52 L22 44 Z"/><path d="M18 62 L82 66 L76 56 L68 60 L60 52 L52 58 L44 50 L36 58 L28 50 Z"/>`,
+  star: `<path d="M50 12 L60 38 L88 40 L66 58 L74 86 L50 70 L26 86 L34 58 L12 40 L40 38 Z"/>`,
+  fox: `<path d="M18 18 L40 38 L50 34 L60 38 L82 18 L76 52 L50 82 L24 52 Z"/><path d="M36 56 L46 60 L40 50 Z M64 56 L54 60 L60 50 Z" fill="#000"/>`,
 };
 const SHAPES = {
   hex: (a) => `<polygon points="50,3 93,27 93,73 50,97 7,73 7,27" ${a}/>`,
@@ -47,7 +57,10 @@ export function stars(n, cls = "") {
   for (let i = 1; i <= 5; i++) s += `<svg viewBox="0 0 24 24"><path class="${i <= n ? "on" : "off"}" d="${STAR}"/></svg>`;
   return s + "</span>";
 }
-export const ovrBadge = (p, lg = false) => `<span class="ovr s${p.stars} ${lg ? "lg" : ""}" title="Overall">${p.ovr}</span>`;
+export const ovrBadge = (p, lg = false) => (p.fog && p.scout
+  ? `<span class="ovr fog ${lg ? "lg" : ""}" title="Scouted overall range">${p.scout.ovr[0] === p.scout.ovr[1] ? p.scout.ovr[0] : `${p.scout.ovr[0]}<i>–</i>${p.scout.ovr[1]}`}</span>`
+  : `<span class="ovr s${p.stars} ${lg ? "lg" : ""}" title="Overall">${p.ovr}</span>`);
+export const potText = (p) => (p.fog && p.scout ? `${p.scout.pot[0]}–${p.scout.pot[1]}` : `${p.pot}`);
 export const pos = (p) => `<span class="pos">${p}</span>`;
 
 export function avatar(p, team, lg = false) {

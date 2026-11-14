@@ -12,6 +12,12 @@ The game opens at http://127.0.0.1:8777. It needs Python 3.10+ and uses only the
 
 ## Systems
 
+- **Custom leagues**: 10–20 teams (even numbers), optional conferences (Atlas and Horizon), and an optional CFP-style selection committee. Rosters start either pre-built or from a fantasy draft. Playoffs are 4 teams (2 rounds) or 8 teams (3 rounds), every series best-of-five. Schedules are published a year in advance.
+- **Selection committee**: weekly rankings built from record, strength of schedule (opponents and opponents' opponents), quality wins, bad losses, capped margin, recent form, an early-season eye test, conference standing and head-to-head. With conferences on, each conference's top-ranked team gets an automatic bid.
+- **Ratings**: the engine runs on internal ratings, and the UI shows a 2K-style scale (99 max, a handful of players in the 90-club).
+- **Front office**: daily trade calls, one untouchable per season (AI teams sometimes name one too), contract negotiation with agent patience and counteroffers, and prospect scouting with fog of war (hidden attributes plus OVR/POT ranges narrowed with scouting points). Each of these is helped by an upgrade track.
+- **Award race**: live ladders and finalists during the season. Voters add variance, and winners are revealed when the regular season ends.
+
 - **Live coaching** (🎙 Coach live on the Hub): the game is simulated in 45-second chunks while you coach. You can call timeouts, make subs, and change strategy from the clipboard. The game also pauses at quarter breaks, momentum runs, and close final possessions.
 - **Coaching challenges**: these can help your team or hurt it, depending on how you do.
   - **Huddle speech**: read the situation and pick the right message.
@@ -40,6 +46,7 @@ The game opens at http://127.0.0.1:8777. It needs Python 3.10+ and uses only the
 
 ```
 python test/simtest.py 3 classic   # headless seasons + realism stats
+python test/configtest.py          # every league configuration: schedules, playoffs, committee, negotiation, scouting
 python test/apitest.py             # full API loop (server must be running)
 python test/livetest.py            # live coaching, upgrades, talks and All-Star weekend over HTTP
 node test/uitest.mjs <saveId>      # clicks through a live-coached game in headless Edge (DevTools protocol)

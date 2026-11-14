@@ -42,7 +42,7 @@ function phaseHero() {
       <button class="btn pri" data-act="sim-day">Sim next day</button>${simBtns}</div>`, { cls: "glow" });
   }
   const h = T(ng.home), a = T(ng.away);
-  const side = (t) => `<div class="side">${U.logo(t, 74)}<div class="tn">${U.esc(t.name)}</div><div class="rec">${recordStr(t)} · OVR ${S.L.derived.strength[t.tid]}</div></div>`;
+  const side = (t) => `<div class="side">${U.logo(t, 74)}<div class="tn">${U.esc(t.name)}</div><div class="rec">${recordStr(t)} · OVR ${S.L.derived.strength_disp[t.tid]}</div></div>`;
   const rb = rivalryBadge(ng.home, ng.away);
   return U.slab(ng.label, `<div class="grid" style="grid-template-columns:1.3fr 1fr;gap:26px;align-items:center">
     <div><div class="matchup">${side(a)}<div class="vs">@</div>${side(h)}</div>${rb ? `<div class="row" style="justify-content:center;margin-top:14px">${rb}</div>` : ""}</div>
@@ -68,7 +68,7 @@ function leadersMini(key, n = 1) {
 function standingsMini() {
   const L = S.L;
   return `<table class="tbl compact"><thead><tr><th class="l">#</th><th class="l">Team</th><th>W-L</th><th>Diff</th><th>Strk</th></tr></thead><tbody>
-    ${L.derived.standings.map((tid, i) => { const t = T(tid); return `<tr class="${tid === L.user ? "me" : ""} ${i === 3 ? "cutline" : ""}"><td class="l mute">${i + 1}</td><td class="l">${U.tlink(t, 20)}</td><td class="hl">${t.w}-${t.l}</td><td>${U.sign(t.pf - t.pa)}</td><td>${streak(t.streak)}</td></tr>`; }).join("")}
+    ${(L.settings?.committee && L.rankings?.length ? L.rankings[L.rankings.length - 1].order : L.derived.standings).map((tid, i) => { const t = T(tid); return `<tr class="${tid === L.user ? "me" : ""} ${i === (L.settings?.playoff || 4) - 1 && !L.settings?.conf ? "cutline" : ""}"><td class="l mute">${i + 1}</td><td class="l">${U.tlink(t, 20)}</td><td class="hl">${t.w}-${t.l}</td><td>${U.sign(t.pf - t.pa)}</td><td>${streak(t.streak)}</td></tr>`; }).join("")}
   </tbody></table>`;
 }
 
@@ -103,9 +103,9 @@ function hub() {
       <div><div class="hero-name"><span class="city">${U.esc(t.city)}</span>${U.esc(t.name)}</div>
         <div class="hero-stats">
           <div><div class="label">Record</div><div class="v">${recordStr(t)}</div></div>
-          <div><div class="label">Standing</div><div class="v">#${rank}</div></div>
+          <div><div class="label">${L.settings?.committee ? "Committee" : "Standing"}</div><div class="v">#${L.settings?.committee && L.rankings?.length ? L.rankings[L.rankings.length - 1].order.indexOf(L.user) + 1 : rank}</div></div>
           <div><div class="label">Streak</div><div class="v">${streak(t.streak)}</div></div>
-          <div><div class="label">Team OVR</div><div class="v">${L.derived.strength[L.user]}</div></div>
+          <div><div class="label">Team OVR</div><div class="v">${L.derived.strength_disp[L.user]}</div></div>
           <div><div class="label">Chemistry</div><div class="v">${L.derived.chem[L.user]}</div></div>
           <div><div class="label">Franchise pts</div><div class="v"><a href="#/franchise" class="acc">${t.fp || 0}</a></div></div>
           <div><div class="label">Titles</div><div class="v">${t.titles || 0}</div></div>
@@ -249,7 +249,7 @@ function contractsTable() {
   return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">Player</th><th class="c">Pos</th><th>Age</th><th class="c">OVR</th><th>Salary</th><th>Years</th><th>Trade value</th><th class="c">Status</th><th class="c"></th></tr></thead><tbody>
     ${ps.map((p) => `<tr><td class="l">${U.pname(p, t, p.arch)}</td><td class="c">${U.pos(p.pos)}</td><td>${p.age}</td><td class="c">${U.ovrBadge(p)}</td>
       <td class="hl">${p.contract ? U.money(p.contract.sal) : "—"}</td><td>${p.contract ? p.contract.yrs : "—"}</td><td>${p.tv}</td>
-      <td class="c">${L.resign.includes(p.id) ? `<span class="chip hot">Expiring</span>` : block.has(p.id) ? `<span class="chip acc">On block</span>` : ""}</td>
+      <td class="c">${me().untouch === p.id ? `<span class="chip lock">🔒 Untouchable</span>` : L.resign.includes(p.id) ? `<span class="chip hot">Expiring</span>` : block.has(p.id) ? `<span class="chip acc">On block</span>` : ""}</td>
       <td class="c"><button class="btn xs ${block.has(p.id) ? "" : "ghost"}" data-act="toggle-block" data-pid="${p.id}">${block.has(p.id) ? "Unblock" : "Block"}</button>
       <button class="btn xs danger" data-act="release" data-pid="${p.id}">Release</button></td></tr>`).join("")}
   </tbody></table></div>
@@ -274,7 +274,7 @@ function rosterView() {
   } else if (tab === "ratings") body = U.slab("Attribute ratings", ratingsTable(lineupOf(L.user), me()));
   else if (tab === "stats") body = U.slab(`${L.season} regular season`, statsTable(roster(L.user))) + (roster(L.user).some((p) => p.stats?.[seasonKey(true)]) ? `<div style="height:16px"></div>` + U.slab("Playoffs", statsTable(roster(L.user), true)) : "");
   else body = U.slab("Contracts & trade block", contractsTable());
-  return head("Roster", `${U.esc(me().name)}`, `${n}/${L.consts.roster_max} players · team OVR ${L.derived.strength[L.user]}`, "") +
+  return head("Roster", `${U.esc(me().name)}`, `${n}/${L.consts.roster_max} players · team OVR ${L.derived.strength_disp[L.user]}`, "") +
     `<div class="tabs">${tabs.map(([k, l]) => `<button class="${tab === k ? "on" : ""}" data-act="roster-tab" data-t="${k}">${l}</button>`).join("")}</div>` + body;
 }
 ACT["roster-tab"] = (el) => { S.ui.rosterTab = el.dataset.t; render(); };
@@ -341,26 +341,91 @@ function schedule() {
   const days = L.schedule.map((day, d) => U.slab(`Day ${d + 1}${L.phase === "regular" && d === L.day ? " · next" : ""}`, day.map((g, i) => gameCell(g, byGid[`${L.season}-r${d + 1}-${i}`], L)).join(""), { cls: L.phase === "regular" && d === L.day ? "glow" : "" })).join("");
   const po = L.results.filter((r) => r.po);
   const mine = L.results.filter((r) => !r.po && (r.h === L.user || r.a === L.user));
-  return head(`${L.season} season`, "Schedule & Results", `${L.consts.days}-game round robin: everyone plays everyone once.`) +
+  const nxt = L.next_schedule ? U.slab(`${L.season + 1} schedule · published`, `<div class="dim" style="font-size:12px;margin-bottom:10px">Schedules are agreed a year in advance${L.settings?.committee ? " so the committee can judge strength of schedule fairly" : ""}. Your games next season:</div><div class="row wrap" style="gap:8px">${L.next_schedule.map((day, d) => { const g = day.find((x) => x.h === L.user || x.a === L.user); if (!g) return ""; const opp = g.h === L.user ? g.a : g.h; return `<span class="chip" style="padding:6px 10px">D${d + 1} ${g.h === L.user ? "vs" : "@"} ${T(opp).abbr}</span>`; }).join("")}</div>`) : "";
+  return head(`${L.season} season`, "Schedule & Results", `${L.consts.days} games, no repeat opponents${L.settings?.conf ? ", weighted toward your conference" : ""}.`) +
     (mine.length ? U.slab("Your results", `<div class="row wrap" style="gap:8px">${mine.map((r) => { const won = (r.h === L.user) === (r.hs > r.as); const opp = r.h === L.user ? r.a : r.h; return `<span class="chip ${won ? "good" : "bad"}" style="cursor:pointer;padding:6px 10px" data-go="#/game/${r.gid}">${won ? "W" : "L"} ${r.h === L.user ? "vs" : "@"} ${T(opp).abbr} ${Math.max(r.hs, r.as)}-${Math.min(r.hs, r.as)}</span>`; }).join("")}</div>`) + `<div style="height:16px"></div>` : "") +
     `<div class="grid g3">${days}</div>` +
-    (po.length ? `<div style="height:16px"></div>` + U.slab("Playoff games", `<div class="grid g4">${po.map((r) => gameCell({ h: r.h, a: r.a }, r, L)).join("")}</div>`) : "");
+    (po.length ? `<div style="height:16px"></div>` + U.slab("Playoff games", `<div class="grid g4">${po.map((r) => gameCell({ h: r.h, a: r.a }, r, L)).join("")}</div>`) : "") +
+    (nxt ? `<div style="height:16px"></div>` + nxt : "");
 }
 
 // ================================================================== STANDINGS
-function standings() {
+function standingsTable(order, cut, title) {
   const L = S.L;
-  const rows = L.derived.standings.map((tid, i) => {
-    const t = T(tid), gp = t.w + t.l, lead = T(L.derived.standings[0]);
+  const lead = T(order[0]);
+  const rows = order.map((tid, i) => {
+    const t = T(tid), gp = t.w + t.l;
     const gb = ((lead.w - t.w) + (t.l - lead.l)) / 2;
-    return `<tr class="${tid === L.user ? "me" : ""} ${i === 3 ? "cutline" : ""}"><td class="l mute">${i + 1}</td><td class="l">${U.tlink(t, 24, true)}</td>
+    const rk = L.settings?.committee && L.rankings?.length ? L.rankings[L.rankings.length - 1].order.indexOf(tid) + 1 : null;
+    return `<tr class="${tid === L.user ? "me" : ""} ${i === cut - 1 ? "cutline" : ""}"><td class="l mute">${i + 1}</td><td class="l">${U.tlink(t, 24, true)}</td>
       <td class="hl">${t.w}</td><td>${t.l}</td><td>${gp ? U.pct(t.w, gp) : "—"}</td><td>${gb ? gb.toFixed(1) : "—"}</td>
       <td>${gp ? U.f1(t.pf / gp) : "—"}</td><td>${gp ? U.f1(t.pa / gp) : "—"}</td><td class="${t.pf - t.pa >= 0 ? "good" : "bad"}">${U.sign(t.pf - t.pa)}</td><td>${streak(t.streak)}</td>
-      <td>${L.derived.strength[tid]}</td><td>${U.money(L.derived.payroll[tid])}</td><td class="c">${modeChip(L.derived.mode[tid])}</td></tr>`;
+      ${rk ? `<td class="hl">#${rk}</td>` : ""}<td>${L.derived.strength_disp[tid]}</td><td>${U.money(L.derived.payroll[tid])}</td><td class="c">${modeChip(L.derived.mode[tid])}</td></tr>`;
   }).join("");
-  return head(`${L.season} season`, "Standings", "Top 4 make the playoffs. Ties go to head-to-head, then point differential.") +
-    U.slab("League table", `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">#</th><th class="l">Team</th><th>W</th><th>L</th><th>PCT</th><th>GB</th><th>PF/G</th><th>PA/G</th><th>DIFF</th><th>STRK</th><th>Team OVR</th><th>Payroll</th><th class="c">Mode</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+  const rkh = L.settings?.committee && L.rankings?.length ? "<th>CMTE</th>" : "";
+  return U.slab(title, `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="l">#</th><th class="l">Team</th><th>W</th><th>L</th><th>PCT</th><th>GB</th><th>PF/G</th><th>PA/G</th><th>DIFF</th><th>STRK</th>${rkh}<th>Team OVR</th><th>Payroll</th><th class="c">Mode</th></tr></thead><tbody>${rows}</tbody></table></div>`);
 }
+
+function standings() {
+  const L = S.L, st = L.settings || {};
+  const P = st.playoff || 4;
+  const how = st.committee
+    ? `The selection committee picks the top ${P}${st.conf ? " (each conference's top-ranked team gets an automatic bid)" : ""}. See Rankings.`
+    : st.conf ? `Top ${P / 2} in each conference make the playoffs.` : `Top ${P} make the playoffs.`;
+  const body = st.conf && L.derived.conf_standings
+    ? `<div class="grid g2">${[0, 1].map((c) => standingsTable(L.derived.conf_standings[c], st.committee ? 0 : P / 2, `${L.consts.conferences[c]} Conference`)).join("")}</div>`
+    : standingsTable(L.derived.standings, st.committee ? 0 : P, "League table");
+  return head(`${L.season} season`, "Standings", `${how} Ties go to head-to-head, then point differential.`) + body;
+}
+
+// ================================================================== RANKINGS (committee)
+function rankings() {
+  const L = S.L, st = L.settings || {};
+  const latest = L.rankings?.[L.rankings.length - 1];
+  if (!st.committee || !latest) return head("Selection committee", "Rankings") + `<div class="empty">No committee in this league.</div>`;
+  const P = st.playoff || 4;
+  const field = new Set(projectedField().field);
+  const rows = latest.order.map((tid, i) => {
+    const t = T(tid), inf = latest.info[String(tid)] || {};
+    const mv = inf.prev ? inf.prev - (i + 1) : 0;
+    return `<div class="rank-row ${tid === L.user ? "me" : ""} ${i === P - 1 ? "cut" : ""}">
+      <div class="rk">${i + 1}</div>${U.logo(t, 34)}
+      <div><div class="row"><b>${U.esc(t.city)} ${U.esc(t.name)}</b><span class="mono dim">${t.w}-${t.l}</span>${field.has(tid) ? `<span class="chip volt">IN</span>` : ""}${st.conf ? `<span class="chip">${L.consts.conferences[t.conf]}</span>` : ""}</div>
+        <div class="label" style="margin-top:4px">SOS #${inf.sos_rank} (${(inf.sos ?? 0).toFixed(3)}) · Quality wins ${inf.qw} · Bad losses ${inf.bl} · Margin ${U.sign(inf.margin ?? 0)} · Form ${inf.form || "—"}</div></div>
+      <div style="text-align:right">${mv > 0 ? `<span class="mv-up">▲${mv}</span>` : mv < 0 ? `<span class="mv-down">▼${-mv}</span>` : `<span class="mute mono">—</span>`}<div class="label">score ${inf.score}</div></div></div>`;
+  }).join("");
+  return head("Selection committee", `${latest.final ? "Final" : `Week ${latest.day}`} Rankings`,
+    "The committee weighs record, strength of schedule (opponents and opponents' opponents), quality wins, bad losses, capped scoring margin, recent form and head-to-head. Early in the season it leans on the eye test (roster strength). The dashed line is the playoff cut.") +
+    U.slab(`Top ${L.teams.length}`, rows);
+}
+
+// projected playoff field (mirrors the server's playoff_field)
+export function projectedField() {
+  const L = S.L, st = L.settings || {};
+  const P = st.playoff || 4;
+  const order = st.committee && L.rankings?.length ? L.rankings[L.rankings.length - 1].order : L.derived.standings;
+  const seed = {};
+  let pairs = [];
+  if (st.conf && !st.committee) {
+    const half = P / 2;
+    [0, 1].forEach((c) => {
+      const sd = L.derived.conf_standings[c].slice(0, half);
+      sd.forEach((t, i) => (seed[t] = `${L.consts.conferences[c][0]}${i + 1}`));
+      pairs = pairs.concat(half === 2 ? [[sd[0], sd[1]]] : [[sd[0], sd[3]], [sd[1], sd[2]]]);
+    });
+  } else {
+    let field;
+    if (st.committee && st.conf) {
+      const auto = [0, 1].map((c) => order.find((t) => T(t).conf === c));
+      field = [...auto, ...order.filter((t) => !auto.includes(t)).slice(0, P - 2)].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    } else field = order.slice(0, P);
+    field.forEach((t, i) => (seed[t] = String(i + 1)));
+    const idx = P === 4 ? [[1, 4], [2, 3]] : [[1, 8], [4, 5], [2, 7], [3, 6]];
+    pairs = idx.map(([a, b]) => [field[a - 1], field[b - 1]]);
+  }
+  return { pairs, seed, field: pairs.flat() };
+}
+
 
 // ================================================================== STATS
 const LEADER_CATS = [["Points", "pts"], ["Rebounds", "reb"], ["Assists", "ast"], ["Steals", "stl"], ["Blocks", "blk"], ["FG%", "fgp"], ["3P%", "tpp"], ["True Shooting", "ts"]];
@@ -391,9 +456,9 @@ function statsMount() {
 }
 
 // ================================================================== PLAYOFFS
-function seriesBox(s, seeds) {
+function seriesBox(s, seedOf) {
   if (!s) return `<div class="series"><div class="tm"><span></span><span></span><span class="mute">TBD</span><span></span></div><div class="tm"><span></span><span></span><span class="mute">TBD</span><span></span></div></div>`;
-  const line = (tid, w, idx) => `<div class="tm ${s.winner === tid ? "win" : s.winner !== null ? "lose" : ""}"><span class="seed">${seeds.indexOf(tid) + 1}</span>${U.logo(T(tid), 26)}<span>${U.tlink(T(tid), 0)}</span><span class="w">${w}</span></div>`;
+  const line = (tid, w) => `<div class="tm ${s.winner === tid ? "win" : s.winner !== null && s.winner !== undefined ? "lose" : ""}"><span class="seed">${seedOf(tid) ?? ""}</span>${U.logo(T(tid), 26)}<span>${U.tlink(T(tid), 0)}</span><span class="w">${w}</span></div>`;
   const games = S.L.results.filter((r) => r.series === s.id && r.s === S.L.season);
   return `<div class="series">${line(s.hi, s.w[0])}${line(s.lo, s.w[1])}
     ${games.length ? `<div class="row wrap" style="gap:4px;padding:8px 10px;border-top:1px solid var(--line)">${games.map((g, i) => `<span class="chip" style="cursor:pointer" data-go="#/game/${g.gid}">G${i + 1} ${T(g.hs > g.as ? g.h : g.a).abbr} ${Math.max(g.hs, g.as)}-${Math.min(g.hs, g.as)}</span>`).join("")}</div>` : ""}</div>`;
@@ -403,23 +468,63 @@ function playoffs() {
   const L = S.L;
   const po = L.playoffs;
   if (!po) {
-    const top4 = L.derived.standings.slice(0, 4);
+    const pf = projectedField();
     const last = L.history[L.history.length - 1];
-    return head(`${L.season}`, "Playoff Picture", "If the season ended today:") +
-      `<div class="grid g2">${U.slab("Projected bracket", `<div class="col">${seriesBox({ id: "x", hi: top4[0], lo: top4[3], w: [0, 0], winner: null }, top4)}${seriesBox({ id: "y", hi: top4[1], lo: top4[2], w: [0, 0], winner: null }, top4)}</div>`)}
+    const rounds = pf.pairs.length === 2 ? 2 : 3;
+    return head(`${L.season}`, "Playoff Picture", `If the season ended today${L.settings?.committee ? " (latest committee rankings)" : ""}:`) +
+      `<div class="grid g2">${U.slab("Projected first round", `<div class="col">${pf.pairs.map(([a, b], k) => seriesBox({ id: "x" + k, hi: a, lo: b, w: [0, 0], winner: null }, (t) => pf.seed[t])).join("")}</div><div class="label" style="margin-top:10px">${rounds} rounds · every series best-of-five</div>`)}
       ${last ? U.slab("Defending champion", `<div class="row">${U.logo(T(last.champ), 80)}<div><div class="display" style="font-size:22px;font-weight:800">${U.esc(T(last.champ).city)} ${U.esc(T(last.champ).name)}</div><div class="label">${last.s} champions · beat ${T(last.runner).abbr} ${Math.max(...last.fin)}-${Math.min(...last.fin)}</div></div></div>`) : ""}</div>`;
   }
-  const sf = po.series.filter((s) => s.rd === 1), fin = po.series.find((s) => s.rd === 2);
+  const seedOf = (tid) => po.seed?.[String(tid)] ?? (po.seeds.indexOf(tid) + 1);
+  const names = po.round_names || ["Semifinals", "Finals"];
+  const cols = names.map((nm, i) => {
+    const rd = i + 1;
+    const ss = po.series.filter((s) => s.rd === rd).sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0));
+    const expected = (po.size || 4) / 2 ** rd;
+    const boxes = [...ss.map((s) => seriesBox(s, seedOf)), ...Array.from({ length: Math.max(0, expected - ss.length) }, () => seriesBox(null))];
+    return `<div class="col" style="gap:${18 + i * 30}px;justify-content:center"><div class="label">${nm}</div>${boxes.join("")}</div>`;
+  }).join("");
   const champ = po.champion !== null && po.champion !== undefined ? T(po.champion) : null;
   const hist = L.history.find((h) => h.s === L.season);
-  return head(`${L.season} postseason`, "Playoffs", "Semifinals and Finals are both best-of-five, in a 2-2-1 format.",
+  const auto = (po.auto || []).map((t) => T(t).abbr).join(", ");
+  return head(`${L.season} postseason`, "Playoffs", `${names.length} rounds, every series best-of-five (2-2-1).${auto ? ` Automatic bids: ${auto}.` : ""}`,
     L.phase === "playoffs" ? `<button class="btn pri" data-act="sim-day">Sim next day</button><button class="btn ghost" data-act="sim-until" data-u="champion">Sim to champion</button>` : L.phase === "offseason" ? `<button class="btn pri" data-go="#/offseason">Go to offseason →</button>` : "") +
-    U.slab("Bracket", `<div class="bracket">
-      <div class="col" style="gap:30px"><div class="label">Semifinals</div>${seriesBox(sf[0], po.seeds)}${seriesBox(sf[1], po.seeds)}</div>
-      <div class="col"><div class="label">Finals</div>${seriesBox(fin, po.seeds)}</div>
+    U.slab("Bracket", `<div class="bracket" style="grid-template-columns:repeat(${names.length + 1}, 1fr)">${cols}
       <div class="trophy">${champ ? `<div class="cup">🏆</div>${U.logo(champ, 90)}<div class="display" style="font-size:22px;font-weight:900;margin-top:10px">${U.esc(champ.city)} ${U.esc(champ.name)}</div><div class="label" style="margin-top:6px">${L.season} champions</div>` : `<div class="cup" style="opacity:.25">🏆</div><div class="label">Awaiting a champion</div>`}</div>
     </div>`) + (hist ? `<div style="height:16px"></div>` + awardsSlab(hist) : "");
 }
+
+// ================================================================== AWARD RACE
+const RACE = [["MVP", "Most Valuable Player", 10], ["DPOY", "Defensive Player of the Year", 6], ["ROY", "Rookie of the Year", 6], ["6MOY", "Sixth Man of the Year", 6], ["MIP", "Most Improved Player", 6]];
+function awardsRace() {
+  const L = S.L;
+  const sa = L.season_awards && L.season_awards.s === L.season ? L.season_awards.aw : null;
+  if (sa) {
+    const h = L.history.find((x) => x.s === L.season) || { s: L.season, awards: sa, names: {} };
+    return head(`${L.season} awards`, "Award Race", "The votes are in. Here are this season's winners.") + awardsSlab({ ...h, awards: { ...sa, ...(h.awards || {}) } });
+  }
+  const race = L.derived.race || {};
+  if (L.phase !== "regular" || !Object.keys(race).length) {
+    return head(`${L.season}`, "Award Race", "The award ladders start after the first game day.") + `<div class="empty">Check back once games have been played.</div>`;
+  }
+  const key = seasonKey();
+  const slab = ([k, nm, n]) => {
+    const rows = (race[k] || []).slice(0, n);
+    const body = rows.length ? rows.map((r, i) => {
+      const p = Pl(r.pid);
+      if (!p) return "";
+      const s = U.perGame(p.stats?.[key]);
+      const line = k === "DPOY" ? `${U.f1(s?.stl)} stl · ${U.f1(s?.blk)} blk · ${U.f1(s?.reb)} reb` : `${U.f1(s?.pts)} pts · ${U.f1(s?.reb)} reb · ${U.f1(s?.ast)} ast`;
+      return `<div class="race-row ${i < 3 ? "fin" : ""}"><span class="rk mono">${i + 1}</span>${U.pname(p, T(p.tid), `${T(p.tid).abbr} · ${line}`)}
+        <div><div class="row"><span class="label">${i < 3 ? "Finalist" : ""}</span><span class="sp"></span><span class="mono">${r.share}%</span></div><div class="share"><i style="width:${r.share}%"></i></div></div></div>`;
+    }).join("") : `<div class="empty">No qualified candidates yet</div>`;
+    return U.slab(nm, body, { cls: k === "MVP" ? "span2" : "" });
+  };
+  return head(`${L.season} · day ${L.day} of ${L.consts.days}`, "Award Race",
+    "Ladders update after every game day. The top three are the current finalists. Voters still have a say, so the leader isn't guaranteed to win. Winners are revealed when the regular season ends.") +
+    `<div class="grid g2">${RACE.map(slab).join("")}</div>`;
+}
+
 
 export function awardsSlab(h) {
   const L = S.L;
@@ -443,7 +548,7 @@ function teams() {
       const t = T(tid);
       const top = roster(tid).sort((a, b) => b.ovr - a.ovr).slice(0, 3);
       return `<section class="slab ${tid === L.user ? "glow" : ""}" style="cursor:pointer" data-team="${tid}">
-        <div class="row">${U.logo(t, 54)}<div><div class="label">${U.esc(t.city)}</div><div class="display" style="font-size:19px;font-weight:800">${U.esc(t.name)}</div></div><div class="sp"></div><div style="text-align:right"><div class="big-num" style="font-size:24px">${recordStr(t)}</div><div class="label">OVR ${L.derived.strength[tid]}</div></div></div>
+        <div class="row">${U.logo(t, 54)}<div><div class="label">${U.esc(t.city)}</div><div class="display" style="font-size:19px;font-weight:800">${U.esc(t.name)}</div></div><div class="sp"></div><div style="text-align:right"><div class="big-num" style="font-size:24px">${recordStr(t)}</div><div class="label">OVR ${L.derived.strength_disp[tid]}</div></div></div>
         <div class="divider"></div>
         <div class="col" style="gap:8px">${top.map((p) => `<div class="row">${U.ovrBadge(p)}<span style="font-weight:600">${U.esc(p.fn[0])}. ${U.esc(p.ln)}</span><span class="mute mono" style="font-size:10px">${p.pos}</span><span class="sp"></span>${U.stars(p.stars)}</div>`).join("")}</div>
         <div class="row" style="margin-top:12px">${modeChip(L.derived.mode[tid])}<span class="sp"></span><span class="label">${U.money(L.derived.payroll[tid])} · ${t.titles || 0}🏆</span></div></section>`;
@@ -458,7 +563,7 @@ function teamPage(r) {
   return `<section class="slab hero" style="margin-bottom:16px;--cut:22px;--acc2:${t.c2}">
       ${U.logo(t, 110)}
       <div><div class="hero-name" style="color:${t.c1}"><span class="city">${U.esc(t.city)}</span>${U.esc(t.name)}</div>
-      <div class="hero-stats"><div><div class="label">Record</div><div class="v">${recordStr(t)}</div></div><div><div class="label">Team OVR</div><div class="v">${L.derived.strength[tid]}</div></div><div><div class="label">Payroll</div><div class="v">${U.money(L.derived.payroll[tid])}</div></div><div><div class="label">Titles</div><div class="v">${t.titles || 0}</div></div></div></div>
+      <div class="hero-stats"><div><div class="label">Record</div><div class="v">${recordStr(t)}</div></div><div><div class="label">Team OVR</div><div class="v">${L.derived.strength_disp[tid]}</div></div><div><div class="label">Payroll</div><div class="v">${U.money(L.derived.payroll[tid])}</div></div><div><div class="label">Titles</div><div class="v">${t.titles || 0}</div></div></div></div>
       <div class="col" style="align-items:flex-end">${modeChip(L.derived.mode[tid])}${tid !== L.user ? `<button class="btn pri" data-act="trade-with" data-tid="${tid}">Trade with ${U.esc(t.abbr)}</button>` : ""}<span class="label">${U.esc(t.arena)}</span></div>
     </section>
     <div class="grid" style="grid-template-columns:minmax(0,1fr) 320px">
@@ -501,5 +606,5 @@ function history() {
 
 export const VIEWS = {
   hub, roster: rosterView, roster_mount: rosterMount, schedule, standings, stats, stats_mount: statsMount,
-  playoffs, teams, team: teamPage, history,
+  playoffs, teams, team: teamPage, history, rankings, awards: awardsRace,
 };

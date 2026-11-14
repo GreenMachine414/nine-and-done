@@ -1,6 +1,8 @@
 // Client state + API layer.
 import { toast } from "./ui.js";
 
+const qsOwner = new URLSearchParams(location.search).get("owner");   // test harness only, localhost only
+if (qsOwner && ["127.0.0.1", "localhost"].includes(location.hostname)) localStorage.setItem("nd_owner", qsOwner);
 const qsSid = new URLSearchParams(location.search).get("sid");
 if (qsSid) localStorage.setItem("nd_sid", qsSid);
 export const S = {

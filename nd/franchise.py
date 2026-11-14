@@ -19,7 +19,7 @@ TRACKS = [
     ("coaching", "Coaching Staff", "Extra timeouts, wider challenge windows and stronger results from your live-coaching calls."),
 ]
 TRACK_KEYS = [t[0] for t in TRACKS]
-COST = [5, 8, 12, 17, 23]
+COST = [12, 20, 30, 42, 56]   # 160 FP to max one track; ~1,440 to max everything
 MAX_LVL = 5
 
 
@@ -78,18 +78,45 @@ def buy(L, key):
     LG.news(L, f"Franchise upgrade: {name} is now level {cur + 1}.", "big", L["user"])
 
 
+PHILOSOPHIES = ["builder", "contender", "moneyball", "culture", "balanced"]
+PHILO_PREFS = {   # how much each front-office philosophy values each track
+    "builder": {"dev": 3.0, "scouting": 2.4, "culture": 1.4, "medical": 1.2},
+    "contender": {"analytics": 2.6, "conditioning": 2.2, "coaching": 1.8, "arena": 1.8, "medical": 1.4},
+    "moneyball": {"frontoffice": 3.0, "analytics": 2.2, "scouting": 1.8, "dev": 1.4},
+    "culture": {"culture": 3.0, "coaching": 1.8, "arena": 1.6, "dev": 1.2},
+    "balanced": {},
+}
+PHILO_LABEL = {"builder": "Player builders", "contender": "Win-now", "moneyball": "Moneyball",
+               "culture": "Culture first", "balanced": "Balanced"}
+
+
 def ai_spend(L, rng):
+    """Called every game day: each AI front office picks the upgrade it wants most (by philosophy, current
+    levels and how its season is going) and buys it once it can afford it, sometimes saving up first."""
     for t in L["teams"]:
         if t["tid"] == L["user"]:
             continue
-        for _ in range(12):
-            opts = [k for k in TRACK_KEYS if t["upg"].get(k, 0) < MAX_LVL and COST[t["upg"].get(k, 0)] <= t["fp"]]
-            if not opts:
-                break
-            low = min(t["upg"].get(k, 0) for k in opts)
-            k = rng.choice([k for k in opts if t["upg"].get(k, 0) == low])
-            t["fp"] -= COST[t["upg"].get(k, 0)]
-            t["upg"][k] = t["upg"].get(k, 0) + 1
+        prefs = PHILO_PREFS.get(t.get("philo"), {})
+        gp = t["w"] + t["l"]
+        struggling = gp >= 3 and t["w"] / gp < 0.4
+
+        def want(k):
+            lv = t["upg"].get(k, 0)
+            if lv >= MAX_LVL:
+                return -1
+            w = prefs.get(k, 1.0) / (1 + 0.45 * lv)
+            if struggling and k in ("dev", "scouting"):
+                w *= 1.3
+            return w * rng.uniform(0.8, 1.2)
+        target = max(TRACK_KEYS, key=want)
+        if want(target) < 0:
+            continue
+        cost = COST[t["upg"].get(target, 0)]
+        if t["fp"] >= cost and rng.random() < 0.7:
+            t["fp"] -= cost
+            t["upg"][target] = t["upg"].get(target, 0) + 1
+            t.setdefault("upg_log", []).append({"s": L["season"], "d": L["day"], "k": target,
+                                                 "lv": t["upg"][target]})
 
 
 # ======================================================================= MORALE / CHEMISTRY
@@ -221,8 +248,15 @@ def offseason_morale(L):
 
 
 # ======================================================================= RIVALRIES
-SEEDED = [(0, 8, "The Power Line"), (1, 6, "The Furnace Feud"), (2, 5, "The Cold Front"),
-          (3, 7, "Deep Water Derby"), (4, 9, "Crown & Fang")]
+SEEDED = [("VOL", "SLC", "The Power Line"), ("ASH", "IRV", "The Furnace Feud"), ("GLP", "CWR", "The Cold Front"),
+          ("OBK", "CRH", "Deep Water Derby"), ("SUN", "THV", "Crown & Fang"), ("CPR", "SLT", "The Gold Rush"),
+          ("LAK", "PCT", "The Woodpile"), ("DSK", "STF", "Night Sky Series"), ("STP", "NWM", "The Northern Storm"),
+          ("BYC", "RVB", "The River Rumble")]
+
+
+def _seeded_keys(L):
+    ab = {t["abbr"]: t["tid"] for t in L["teams"]}
+    return {rkey(ab[a], ab[b]): name for a, b, name in SEEDED if a in ab and b in ab}
 TIERS = ["None", "Heated", "Bitter", "Blood Feud"]
 
 
@@ -234,10 +268,10 @@ def rkey(a, b):
 def ensure_rivals(L):
     if "rivals" not in L:
         L["rivals"] = {}
-    for a, b, name in SEEDED:
-        if a < len(L["teams"]) and b < len(L["teams"]):
-            r = L["rivals"].setdefault(rkey(a, b), {"score": 22, "w": {str(a): 0, str(b): 0}, "g": 0, "po": 0})
-            r.setdefault("name", name)
+    for k, name in _seeded_keys(L).items():
+        a, b = k.split("-")
+        r = L["rivals"].setdefault(k, {"score": 22, "w": {a: 0, b: 0}, "g": 0, "po": 0})
+        r.setdefault("name", name)
 
 
 def tier(score):
@@ -277,7 +311,7 @@ def rivalry_series(L, winner, loser, games):
 
 
 def decay_rivals(L):
-    seeded = {rkey(a, b) for a, b, _ in SEEDED}
+    seeded = set(_seeded_keys(L))
     for k, r in L.get("rivals", {}).items():
         r["score"] = round(max(15 if k in seeded else 0, r["score"] * 0.8), 1)
 
@@ -329,7 +363,7 @@ def allstar_setup(L, rng):
         _set_morale(L, p, p.get("morale", 65) + boost)
         _log(p, "All-Star!", boost)
         p["awards"].append({"s": S, "a": "AS"})
-        earn(L, p["tid"], 2, f"All-Star selection: {P.full_name(p)}")
+        earn(L, p["tid"], 1, f"All-Star selection: {P.full_name(p)}")
     mine = [p for p in sel if p["tid"] == L["user"]]
     LG.news(L, f"All-Star Weekend is here! {len(sel)} players selected"
                + (f", including your {', '.join(P.short_name(p) for p in mine)}" if mine else "") + ".", "big",
@@ -383,7 +417,7 @@ def three_round(L, accs=None, rng=None):
         if p:
             p["awards"].append({"s": L["season"], "a": "3PT"})
             _set_morale(L, p, p.get("morale", 65) + 5)
-            earn(L, p["tid"], 2, f"3-Point Contest champion: {P.full_name(p)}")
+            earn(L, p["tid"], 1, f"3-Point Contest champion: {P.full_name(p)}")
             LG.news(L, f"{P.full_name(p)} wins the 3-Point Contest with {th['final'][win]['score']} in the final.",
                     "big", p["tid"])
 
@@ -450,3 +484,96 @@ def allstar_run(L, rng=None):
             "ot": res["ot"], "po": False, "series": None, "pog": int(mvp), "allstar": True, "q": res["q"],
             "box": res["box"], "starters": res["starters"], "events": res["events"], "flow": res["flow"],
             "teams": tds}
+
+
+# ======================================================================= SELECTION COMMITTEE (CFP-style)
+def _opponents(L, tid):
+    """Regular-season opponents played so far, with results, from the schedule + results log."""
+    out = []
+    for r in L["results"]:
+        if r.get("po") or r.get("s") != L["season"]:
+            continue
+        if r["h"] == tid:
+            out.append((r["a"], r["hs"] > r["as"], r["hs"] - r["as"]))
+        elif r["a"] == tid:
+            out.append((r["h"], r["as"] > r["hs"], r["as"] - r["hs"]))
+    return out
+
+
+def committee_rank(L, final=False):
+    """Weekly ranking. Factors: record, strength of schedule (opponents + opponents' opponents), quality wins,
+    bad losses, capped scoring margin, recent form, an early-season 'eye test' (roster strength), conference
+    standing, then a head-to-head check between neighbors. A little committee subjectivity is baked in."""
+    teams = L["teams"]
+    n = len(teams)
+    wp = {t["tid"]: (t["w"] / (t["w"] + t["l"]) if t["w"] + t["l"] else 0.5) for t in teams}
+    strength = {t["tid"]: LG.team_strength(L, t["tid"]) for t in teams}
+    prev = L["rankings"][-1]["order"] if L.get("rankings") else None
+    prev_rank = {tid: i for i, tid in enumerate(prev)} if prev else {}
+    # tiers for quality wins / bad losses: last week's committee ranking, or roster strength preseason
+    tier_order = prev or sorted(strength, key=lambda t: -strength[t])
+    top = set(tier_order[:max(3, n // 3)])
+    bottom = set(tier_order[-max(3, n // 3):])
+    rng = random.Random(L["season"] * 1000 + L["day"] * 7 + 3)
+    info, score = {}, {}
+    for t in teams:
+        tid = t["tid"]
+        games = _opponents(L, tid)
+        gp = len(games)
+        opp = [o for o, _, _ in games]
+        sos = sum(wp[o] for o in opp) / gp if gp else 0.5
+        sos2 = 0.5
+        if gp:
+            vals = [sum(wp[x] for x, _, _ in _opponents(L, o)) / max(1, len(_opponents(L, o))) for o in opp]
+            sos2 = sum(vals) / len(vals)
+        qw = sum(1 for o, won, _ in games if won and o in top)
+        bl = sum(1 for o, won, _ in games if not won and o in bottom)
+        margin = sum(max(-15, min(15, m)) for _, _, m in games) / gp if gp else 0
+        form = sum(t.get("results", [])[-3:]) / max(1, len(t.get("results", [])[-3:])) if t.get("results") else 0.5
+        eye_w = max(0.15, 1 - gp / 6)
+        conf_lead = 0
+        if L["settings"].get("conf"):
+            mates = [x for x in teams if x["conf"] == t["conf"]]
+            best = max(x["w"] - x["l"] for x in mates)
+            conf_lead = 1 if t["w"] - t["l"] == best and gp else 0
+        sc = (42 * (wp[tid] if gp else 0.5) + 20 * sos + 7 * sos2 + 3.5 * qw - 4.5 * bl + 0.45 * margin
+              + 4 * form + eye_w * (strength[tid] - 68) * 0.9 + 1.5 * conf_lead + rng.gauss(0, 0.6))
+        score[tid] = sc
+        info[str(tid)] = {"sos": round(sos, 3), "qw": qw, "bl": bl, "margin": round(margin, 1),
+                          "form": "".join("W" if x else "L" for x in t.get("results", [])[-3:]), "gp": gp}
+    order = sorted(score, key=lambda t: -score[t])
+    # head-to-head: a team that beat the team just above it, with a close score, jumps it
+    for _ in range(2):
+        for i in range(len(order) - 1):
+            a, b = order[i], order[i + 1]
+            hb = team_h2h(L, b, a)
+            if hb[0] > hb[1] and score[a] - score[b] < 3:
+                order[i], order[i + 1] = b, a
+    sos_rank = sorted(score, key=lambda t: -info[str(t)]["sos"])
+    for tid in score:
+        info[str(tid)]["sos_rank"] = sos_rank.index(tid) + 1
+        info[str(tid)]["prev"] = (prev_rank[tid] + 1) if tid in prev_rank else None
+        info[str(tid)]["score"] = round(score[tid], 1)
+    entry = {"day": L["day"], "final": final, "order": order, "info": info}
+    if L["rankings"] and L["rankings"][-1]["day"] == L["day"]:
+        L["rankings"][-1] = entry
+    else:
+        L["rankings"].append(entry)
+    L["rankings"] = L["rankings"][-12:]
+    if L["day"] > 0:
+        u = L["user"]
+        LG.news(L, f"Committee rankings (week {L['day']}): " + ", ".join(
+            f"{i + 1}. {LG.team(L, t)['abbr']}" for i, t in enumerate(order[:5])) +
+            (f" … you're #{order.index(u) + 1}" if order.index(u) >= 5 else ""), "info")
+    return order
+
+
+def team_h2h(L, a, b):
+    rec = LG.team(L, a)["h2h"].get(str(b), [0, 0])
+    return rec
+
+
+def committee_order(L):
+    if not L.get("rankings"):
+        committee_rank(L)
+    return list(L["rankings"][-1]["order"])
