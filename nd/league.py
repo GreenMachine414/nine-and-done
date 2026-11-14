@@ -96,6 +96,9 @@ def gen_prospects(L, season, rng, n=None):
     for tgt in targets:
         age = rng.choice([19, 19, 19, 20, 20, 21, 21, 22, 23])
         p = P.generate(rng, new_pid(L), tgt, age, used_names=names, season=season)
+        # the pre-draft year of growth happens now, so what teams scout is what they draft
+        P.develop(p, rng, -0.15 + (0.6 if p.get("trait") == "Gym Rat" else 0.0))
+        p["hist"][-1]["ovr"] = p["ovr"]
         p["tid"] = -2
         p["dclass"] = season
         p["prospect"] = True
@@ -145,7 +148,7 @@ def new_league(name, user_tid, mode="classic", seed=None, settings=None):
         "block": {"players": [], "picks": []}, "offers": [], "resign": [], "offseason": None,
         "last_rank": None, "seasons_played": 0, "live": None, "allstar": None, "allstar_hist": [],
         "settings": settings, "next_schedule": None, "nego": {}, "scout": {"pts": 12, "lv": {}},
-        "options": [], "lottery": None,
+        "options": [], "lottery": None, "rating_v": 2, "prospect_v": 2,
         "energy": {}, "season_awards": None,
     }
     for i, fi in enumerate(franchises):
@@ -243,6 +246,13 @@ def migrate(L):
             p["pot"] = max(p["ovr"], min(P.POT_MAX, p["ovr"] + gap))
             P.refresh(p)
         L["rating_v"] = 2
+    if L.get("prospect_v") != 2:   # prospects now get their pre-draft growth at creation and are frozen after
+        if L.get("phase") != "offseason":
+            mrng = random.Random(L.get("next_pid", 0) + 7)
+            for p in L["players"].values():
+                if p["tid"] == -2:
+                    P.develop(p, mrng, -0.15)
+        L["prospect_v"] = 2
     # one 20-team table, no conferences or committee, 8-team playoff
     L["settings"]["conf"] = False
     L["settings"]["committee"] = False
@@ -926,7 +936,8 @@ def start_offseason(L, rng):
             if mentors.get(p["tid"]) and p["age"] <= 23:
                 bonus += 0.5
             bonus += (p.get("morale", 65) - 66) / 40 * 0.4
-        P.develop(p, rng, bonus, cut, perf.get(p["id"], 0.0))
+        if p["tid"] != -2:       # draft prospects are frozen until they're drafted (see gen_prospects)
+            P.develop(p, rng, bonus, cut, perf.get(p["id"], 0.0))
         p["age"] += 1
         p["hist"].append({"s": S + 1, "ovr": p["ovr"], "age": p["age"]})
         if p["tid"] == L["user"]:

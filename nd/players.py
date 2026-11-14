@@ -1,4 +1,5 @@
 """Player model: positions, attributes, ceilings, tendencies, generation, development, contracts."""
+import math
 import random
 
 from .data import FIRST_NAMES, LAST_NAMES, FIRST_NAMES_US, LAST_NAMES_US, SCHOOLS, MIN_SALARY, MAX_SALARY
@@ -348,36 +349,60 @@ def generate(rng, pid, target_ovr, age, pos=None, used_names=None, season=0):
 SCOUT_MAX_STEP = 4
 
 
+# Full width of a scouting range, in stars, by scouting visits (the scouting upgrade narrows it further).
+SCOUT_W_OVR = [1.1, 0.8, 0.5, 0.25, 0.0]
+SCOUT_W_POT = [1.6, 1.3, 1.0, 0.65, 0.3]
+_GRID = 0.01
+
+
+def _nested_range(truth, width, seed, w_max):
+    """One team's view of a hidden value at a given precision. All the ranges a team will ever see for a player
+    form a nested chain: a narrower range always sits inside every wider one before it, and always contains
+    the truth. The first range is placed at random around the truth (edges included); each narrowing then
+    picks a random spot inside the previous range."""
+    width = math.ceil(round(width / _GRID, 6)) * _GRID   # every precision sits on one shared grid of widths
+    r = random.Random(seed)
+    lo, hi = truth - w_max, truth + w_max          # unconstrained before the first report
+    w = w_max
+    while True:
+        a = max(lo, truth - w)                     # the new range [x, x + w] must contain the truth
+        b = min(hi - w, truth)                     # ...and stay inside the previous range
+        x = a + (b - a) * r.random() if b > a else a
+        lo, hi = x, x + w
+        if w <= width + 1e-9:
+            return lo, hi
+        w = max(width, round(w - _GRID, 4))
+
+
+def _star_range(lo, hi, exact):
+    if exact:
+        v = round(min(5.0, max(1.0, lo)), 1)
+        return [v, v]
+    # round outward to the tenth so the displayed ranges stay nested too
+    return [round(min(5.0, max(1.0, math.floor(lo * 10 + 1e-9) / 10)), 1),
+            round(min(5.0, max(1.0, math.ceil(hi * 10 - 1e-9) / 10)), 1)]
+
+
 def scout_report(p, step, scouting=0, salt=0):
-    """Fog-of-war view of a prospect for a team with `step` scouting visits and the given scouting upgrade.
-    Returns display-scale ranges for OVR/POT and only the attributes uncovered so far."""
+    """Fog-of-war view of a prospect for team `salt` with `step` scouting visits and the given scouting upgrade.
+    Returns star ranges for OVR/POT and only the attributes uncovered so far. A prospect's ratings don't change
+    before the draft, and every new report narrows the last one: its bounds never go outside the earlier range."""
     r = random.Random(p["id"] * 7919 + 17)
     order = list(ATTRS)
     r.shuffle(order)            # which attributes get uncovered first (fixed per player)
     step = max(0, min(SCOUT_MAX_STEP, step))
-    # Where the true value sits inside each range is uniformly random, edges included, and re-drawn at every
-    # scouting step, so successive reports can't be compared to back out the exact rating.
-    rs = random.Random(p["id"] * 104729 + step * 7907 + salt * 15485863 + 3)   # each team's scouts differ
-    f_o, f_p = rs.random(), rs.random()
     n_known = min(len(ATTRS), 4 + scouting + 3 * step)
     known = {k: p["a"][k] for k in order[:n_known]}
     shrink = 1 - 0.1 * scouting
-    wo = [7.0, 5.0, 3.0, 1.5, 0.0][step] * shrink
-    wp = [10.0, 8.0, 6.0, 4.0, 2.0][step] * shrink
-    lo_o = p["ovr"] - f_o * 2 * wo
-    lo_p = p["pot"] - f_p * 2 * wp
-    ovr = [stars_for(lo_o), stars_for(lo_o + 2 * wo)]
-    pot = [max(ovr[0], stars_for(lo_p)), max(ovr[1], stars_for(lo_p + 2 * wp))]
+    wo = SCOUT_W_OVR[step] * shrink
+    wp = SCOUT_W_POT[step] * shrink
+    base = p["id"] * 104729 + salt * 15485863           # each team's scouts have their own chain
+    to, tp = star_value(p["ovr"]), star_value(p["pot"])
+    ovr = _star_range(*_nested_range(to, wo, base + 3, SCOUT_W_OVR[0]), exact=wo <= 0)
+    pr = _star_range(*_nested_range(tp, wp, base + 5, SCOUT_W_POT[0]), exact=False)
+    pot = [max(ovr[0], pr[0]), max(ovr[1], pr[1])]
     return {"step": step, "max": SCOUT_MAX_STEP, "known": known, "ovr": ovr, "pot": pot,
             "tags": p["tags"] if step >= 2 else []}
-
-
-def fuzz_pot(p, scouting=0):
-    """Scouting-report range for a prospect's potential (deterministic per player)."""
-    r = random.Random(p["id"] * 7919)
-    spread = max(1, (4 if p["age"] >= 22 else 6) - scouting)
-    center = p["pot"] + round(r.randint(-3, 3) * spread / 6)
-    return [max(p["ovr"], center - spread), min(99, center + spread)]
 
 
 

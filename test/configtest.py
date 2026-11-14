@@ -117,8 +117,46 @@ def aging_check():
     print(f"age 28 (before decline): avg change {sum(pre) / len(pre) * 0.08:+.2f} stars (performance ignored)")
 
 
+def scouting_check():
+    """Every scouting report narrows the previous one (never outside it) and always contains the true stars,
+    including when the scouting upgrade is bought partway through."""
+    rng = random.Random(5)
+    pos_at = Counter()
+    for i in range(1500):
+        p = P.generate(rng, 700000 + i, rng.uniform(40, 75), rng.choice([19, 20, 21, 22]))
+        p["prospect"] = True
+        truth_o, truth_p = P.stars_for(p["ovr"]), P.stars_for(p["pot"])
+        for salt in (0, 7):
+            path, st, lv = [(0, 0)], 0, 0      # a random scouting history: visits and upgrades only go up
+            while st < 4 or lv < 5:
+                if rng.random() < 0.6 and st < 4:
+                    st += 1
+                elif lv < 5:
+                    lv += 1
+                path.append((st, lv))
+            prev = None
+            for st, lv in path:
+                rep = P.scout_report(p, st, lv, salt)
+                o, pt = rep["ovr"], rep["pot"]
+                assert o[0] <= truth_o <= o[1], (o, truth_o)
+                assert pt[0] <= max(truth_p, o[0]) and max(truth_p, truth_o) <= pt[1] + 1e-9, (pt, truth_p)
+                if prev:
+                    assert prev["ovr"][0] <= o[0] and o[1] <= prev["ovr"][1], (prev["ovr"], o)
+                    assert prev["pot"][0] <= pt[0] and pt[1] <= prev["pot"][1], (prev["pot"], pt)
+                prev = rep
+            t = P.star_value(p["ovr"])
+            lo, hi = P._nested_range(t, P.SCOUT_W_OVR[0], p["id"] * 104729 + salt * 15485863 + 3, P.SCOUT_W_OVR[0])
+            pos_at[min(4, int((t - lo) / (hi - lo) * 5))] += 1
+    print("scouting: every report nested inside the last and containing the truth | where the truth sits in the "
+          "first range (fifths):", [pos_at[k] for k in range(5)])
+    ex = P.generate(rng, 799999, 60, 19)
+    print("  example narrowing:", [P.scout_report(ex, st, 0, 1)["ovr"] for st in range(5)],
+          "true", P.stars_for(ex["ovr"]))
+
+
 if __name__ == "__main__":
     for start, seed in (("classic", 101), ("fantasy", 202)):
         print("\n".join(run(start, seed)))
     aging_check()
+    scouting_check()
     print("ALL OK")
