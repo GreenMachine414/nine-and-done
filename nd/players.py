@@ -19,15 +19,16 @@ ATTR_LABEL = {
 CEIL = {
     "PG": dict(ins=90, mid=99, three=99, ft=99, post=55, **{"pass": 99}, hand=99, iq=99, perd=99, intd=60, stl=99,
                blk=50, reb=66, ath=99, sta=99),
-    "SG": dict(ins=94, mid=99, three=99, ft=99, post=66, **{"pass": 90}, hand=95, iq=99, perd=99, intd=68, stl=95,
-               blk=60, reb=72, ath=99, sta=99),
-    "SF": dict(ins=97, mid=97, three=95, ft=95, post=82, **{"pass": 88}, hand=90, iq=99, perd=97, intd=82, stl=92,
-               blk=78, reb=85, ath=99, sta=99),
-    "PF": dict(ins=99, mid=92, three=88, ft=90, post=95, **{"pass": 82}, hand=78, iq=99, perd=85, intd=95, stl=82,
-               blk=92, reb=97, ath=95, sta=97),
-    "C": dict(ins=99, mid=85, three=80, ft=85, post=99, **{"pass": 80}, hand=68, iq=99, perd=72, intd=99, stl=72,
-              blk=99, reb=99, ath=92, sta=95),
+    "SG": dict(ins=98, mid=99, three=99, ft=99, post=70, **{"pass": 97}, hand=99, iq=99, perd=99, intd=75, stl=99,
+               blk=64, reb=82, ath=99, sta=99),
+    "SF": dict(ins=99, mid=99, three=99, ft=98, post=88, **{"pass": 98}, hand=98, iq=99, perd=99, intd=92, stl=98,
+               blk=86, reb=94, ath=99, sta=99),
+    "PF": dict(ins=99, mid=97, three=95, ft=94, post=99, **{"pass": 93}, hand=89, iq=99, perd=95, intd=99, stl=90,
+               blk=98, reb=99, ath=99, sta=99),
+    "C": dict(ins=99, mid=93, three=90, ft=90, post=99, **{"pass": 92}, hand=80, iq=99, perd=84, intd=99, stl=84,
+              blk=99, reb=99, ath=98, sta=98),
 }
+
 
 # Offsets from the player's quality level that define the "shape" of each position.
 BASE = {
@@ -79,6 +80,7 @@ _W_RAW = {
               reb=15, ath=7, sta=2),
 }
 WEIGHTS = {p: {k: v / sum(w.values()) for k, v in w.items()} for p, w in _W_RAW.items()}
+_GROW_W = {k: sum(WEIGHTS[p][k] for p in WEIGHTS) / len(WEIGHTS) for k in WEIGHTS["PG"]}   # position-neutral
 
 TRAITS = {
     "Leader": "Lifts the locker room. Boosts team chemistry and steadies teammates' morale.",
@@ -106,9 +108,49 @@ def clamp(v, lo, hi):
     return lo if v < lo else hi if v > hi else v
 
 
+# ---- Overall rating = impact. Attributes roll up into seven skill groups. Scoring counts a player's best
+# zones (a slasher, a shooter and a post scorer can all be elite), and each position weighs the groups by how
+# much they matter there. A power mean lets strengths count for more than weaknesses, so a superstar needs to
+# be elite at what matters for him, not maxed out everywhere (and not every PG has to be a playmaker).
+GROUP_W = {
+    "PG": dict(score=.30, play=.24, perd=.14, intd=.02, reb=.04, ath=.12, iq=.14),
+    "SG": dict(score=.36, play=.12, perd=.17, intd=.03, reb=.06, ath=.13, iq=.13),
+    "SF": dict(score=.32, play=.09, perd=.15, intd=.09, reb=.10, ath=.13, iq=.12),
+    "PF": dict(score=.28, play=.05, perd=.07, intd=.19, reb=.18, ath=.11, iq=.12),
+    "C": dict(score=.25, play=.04, perd=.03, intd=.25, reb=.21, ath=.09, iq=.13),
+}
+GROUP_ATTRS = {"score": ["ins", "mid", "three", "post", "ft"], "play": ["pass", "hand"], "perd": ["perd", "stl"],
+               "intd": ["intd", "blk"], "reb": ["reb"], "ath": ["ath", "sta"], "iq": ["iq"]}
+GROUP_NAMES = {"score": "Scoring", "play": "Playmaking", "perd": "Perimeter D", "intd": "Interior D",
+               "reb": "Rebounding", "ath": "Athleticism", "iq": "IQ"}
+_IMPACT_POW = 3.0
+# per position: maps impact onto the rating scale so typically-built players keep the rating they always had
+_CAL = {"PG": (-1.4, 1.015), "SG": (-2.0, 1.014), "SF": (-2.0, 1.010), "PF": (-2.9, 1.012), "C": (-4.4, 1.034)}
+_SHARE = {"ins": .23, "mid": .23, "three": .23, "post": .23, "ft": .08, "pass": .5, "hand": .5, "perd": .7,
+          "stl": .3, "intd": .6, "blk": .4, "reb": 1.0, "ath": .8, "sta": .2, "iq": 1.0}
+_GROUP_OF = {k: g for g, ks in GROUP_ATTRS.items() for k in ks}
+# how much each attribute matters at each position (used to shape growth and decline)
+ATTR_IMP = {pos: {k: GROUP_W[pos][_GROUP_OF[k]] * _SHARE[k] for k in ATTRS} for pos in GROUP_W}
+
+
+def skill_groups(a):
+    z = sorted((a["ins"], a["mid"], a["three"], a["post"]), reverse=True)
+    return {"score": (0.55 * z[0] + 0.30 * z[1] + 0.15 * z[2]) * 0.92 + 0.08 * a["ft"],
+            "play": 0.5 * a["pass"] + 0.5 * a["hand"],
+            "perd": 0.7 * a["perd"] + 0.3 * a["stl"],
+            "intd": 0.6 * a["intd"] + 0.4 * a["blk"],
+            "reb": a["reb"], "ath": 0.8 * a["ath"] + 0.2 * a["sta"], "iq": a["iq"]}
+
+
+def impact(pos, a):
+    g = skill_groups(a)
+    w = GROUP_W[pos]
+    return sum(w[k] * max(1.0, g[k]) ** _IMPACT_POW for k in w) ** (1 / _IMPACT_POW)
+
+
 def calc_ovr(p):
-    w = WEIGHTS[p["pos"]]
-    return int(round(sum(p["a"][k] * w[k] for k in ATTRS)))
+    A, B = _CAL[p["pos"]]
+    return int(round(A + B * impact(p["pos"], p["a"])))
 
 
 # Internal ratings ("raw") drive the engine and economy. Everything shown to players uses a 2K-style display
@@ -133,9 +175,32 @@ def undisp(d):
     return 100.0
 
 
-# Players are shown only as 1.0-5.0 stars, to the nearest tenth. 5.0 is essentially a perfect player.
+# Players are shown only as 1.0-5.0 stars, to the nearest tenth. Linear up to the knee (about 4.1 stars), then
+# steeper, so 5.0 is a generational superstar: elite at everything that matters for him, average elsewhere.
+STAR_KNEE = 84
+STAR_TOP = 91      # raw rating of a 5.0 (a Jordan-type profile)
+ELITE_RAW = 87     # above this (about 4.5 stars), upward moves are smaller: the last steps to greatness are hardest
+ELITE_DAMP = 0.4
+POT_MAX = 97       # highest potential a prospect can have
+_SK = 1 + (STAR_KNEE - 45) * 0.08
+
+
+def star_value(ovr):
+    """Unrounded, unclamped star value of a raw rating."""
+    if ovr <= STAR_KNEE:
+        return 1 + (ovr - 45) * 0.08
+    return _SK + (ovr - STAR_KNEE) * (5 - _SK) / (STAR_TOP - STAR_KNEE)
+
+
+def raw_for_stars(sv):
+    """Inverse of star_value()."""
+    if sv <= _SK:
+        return 45 + (sv - 1) / 0.08
+    return STAR_KNEE + (sv - _SK) * (STAR_TOP - STAR_KNEE) / (5 - _SK)
+
+
 def stars_for(ovr):
-    return round(min(5.0, max(1.0, 1 + (ovr - 45) * 0.08)), 1)
+    return round(min(5.0, max(1.0, star_value(ovr))), 1)
 
 
 def market_salary(ovr, age):
@@ -223,12 +288,23 @@ def generate(rng, pid, target_ovr, age, pos=None, used_names=None, season=0):
     pos = pos or rng.choice(POS)
     arch_name = rng.choice(list(ARCH[pos]))
     arch = ARCH[pos][arch_name]
+    # signature strengths and a weakness among the groups that matter at his position
+    rel = sorted(GROUP_W[pos], key=lambda g: -GROUP_W[pos][g])[:5]
+    strong = rng.sample(rel, rng.choice([1, 2]))
+    weak = rng.choice([g for g in rel if g not in strong])
+    shape = dict.fromkeys(ATTRS, 0.0)
+    for g in strong:
+        bump = rng.uniform(4, 11)
+        for k in GROUP_ATTRS[g]:
+            shape[k] += bump
+    for k in GROUP_ATTRS[weak]:
+        shape[k] -= rng.uniform(4, 10)
     a = {}
     for k in ATTRS:
-        a[k] = target_ovr + BASE[pos][k] + arch.get(k, 0) + rng.gauss(0, 4.5)
+        a[k] = target_ovr + BASE[pos][k] + arch.get(k, 0) + shape[k] + rng.gauss(0, 4.5)
     p = {"id": pid, "pos": pos, "a": a, "arch": arch_name}
     c = CEIL[pos]
-    for _ in range(4):
+    for _ in range(8):
         for k in ATTRS:
             a[k] = clamp(a[k], 20, c[k])
         diff = target_ovr - calc_ovr(p)
@@ -263,7 +339,7 @@ def generate(rng, pid, target_ovr, age, pos=None, used_names=None, season=0):
         g = rng.uniform(0, 4)
     else:
         g = 0
-    p["pot"] = int(clamp(ovr + g, ovr, 97))
+    p["pot"] = int(clamp(ovr + g, ovr, POT_MAX))
     refresh(p)
     p["hist"].append({"s": season, "ovr": p["ovr"], "age": age})
     return p
@@ -304,7 +380,25 @@ def fuzz_pot(p, scouting=0):
     return [max(p["ovr"], center - spread), min(99, center + spread)]
 
 
-STAR_RAW = 1 / 0.08     # raw rating points per 1.0 star (see stars_for)
+
+
+def _land(p, want, rng):
+    """Nudge whole-number attributes until the overall equals `want`. Growth goes into what matters most for
+    his position, with some randomness, so the player's shape (strengths and weaknesses) is kept."""
+    refresh(p)
+    a = p["a"]
+    imp = ATTR_IMP[p["pos"]]
+    ceil = CEIL[p["pos"]]
+    for _ in range(300):
+        if p["ovr"] == want:
+            break
+        d = 1 if p["ovr"] < want else -1
+        ok = [k for k in ATTRS if (a[k] < ceil[k] if d > 0 else a[k] > 20)]
+        if not ok:
+            break
+        k = max(ok, key=lambda k: imp[k] * (0.4 + rng.random()))
+        a[k] += d
+        p["ovr"] = calc_ovr(p)
 
 
 DECLINE_STARS = 0.12   # constant yearly drop once a player reaches his decline age
@@ -323,27 +417,12 @@ def develop(p, rng, bonus=0.0, decline_cut=0.0, perf=0.0):
     dage = p.get("decline_age") or 31
     a = p["a"]
     if age >= dage:
-        m = -DECLINE_STARS * STAR_RAW * (1 - decline_cut)
-        m += rng.uniform(-0.15, 0.15) * STAR_RAW
-        m += max(-1.0, min(1.0, perf)) * 0.15 * STAR_RAW
-        target = before + m
+        d = -DECLINE_STARS * (1 - decline_cut) + rng.uniform(-0.15, 0.15) + max(-1.0, min(1.0, perf)) * 0.15
+        target = raw_for_stars(star_value(before) + d)          # the change is in stars, at his level
+        m = target - before
         for k in ATTRS:   # bodies go first: athleticism and stamina carry more of the change, IQ less
             w = 1.6 if k in ("ath", "sta") else 0.4 if k == "iq" else 1.0
             a[k] += m * w + rng.gauss(0, 0.4)
-        refresh(p)
-        wts = WEIGHTS[p["pos"]]
-        ceil = CEIL[p["pos"]]
-        want = int(round(target))
-        for _ in range(40):   # land the overall exactly on the target (attributes are whole numbers)
-            if p["ovr"] == want:
-                break
-            d = 1 if p["ovr"] < want else -1
-            ok = [k for k in ATTRS if (a[k] < ceil[k] if d > 0 else a[k] > 20)]
-            if not ok:
-                break
-            k = max(ok, key=lambda k: wts[k] * (0.6 + rng.random()))
-            a[k] += d
-            p["ovr"] = calc_ovr(p)
     else:
         if age <= 20:
             m = 4.0
@@ -370,22 +449,29 @@ def develop(p, rng, bonus=0.0, decline_cut=0.0, perf=0.0):
         m += rng.gauss(0, 1.8)
         if m > 0 and gap <= 0:
             m *= 0.25
+        if m > 0 and p["ovr"] >= ELITE_RAW:   # the last steps to greatness are the hardest
+            m *= ELITE_DAMP
+        target = before
         for k in ATTRS:
             w = 1.0
+            ch = 0.0
             if k in ("ath", "sta"):
                 w = 0.5 if m > 0 else 1.7
                 if age >= 29:
-                    a[k] -= rng.uniform(0.5, 2.0)
+                    ch -= rng.uniform(0.5, 2.0)
             elif k == "iq":
                 w = 0.7 if m > 0 else 0.0
                 if age >= 25:
-                    a[k] += rng.uniform(0, 1.5)
-            a[k] += m * w + rng.gauss(0, 1.1)
+                    ch += rng.uniform(0, 1.5)
+            ch += m * w + rng.gauss(0, 1.1)
+            a[k] += ch
+            target += ch * _GROW_W[k]   # the yearly change: same formula at every position
+    _land(p, int(target + rng.random()), rng)    # randomized rounding keeps the average change exact
     refresh(p)
     if p["age"] >= 26:
         p["pot"] = max(p["ovr"], min(p["pot"], p["ovr"] + max(0, 29 - p["age"])))
     else:
-        p["pot"] = int(clamp(p["pot"] + rng.gauss(-1.0, 2.5), p["ovr"], 97))
+        p["pot"] = int(clamp(p["pot"] + rng.gauss(-1.0, 2.5), p["ovr"], POT_MAX))
     refresh(p)
     return p["ovr"] - before
 

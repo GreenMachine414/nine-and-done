@@ -98,10 +98,11 @@ def aging_check():
             p["decline_age"] = 31
             b = p["ovr"]
             P.develop(p, random.Random(i), 0, 0, perf)
-            d.append((p["ovr"] - b) / P.STAR_RAW)
+            d.append(P.star_value(p["ovr"]) - P.star_value(b))
         lo, hi, avg = min(d), max(d), sum(d) / len(d)
         exp = -0.12 + 0.15 * perf
-        assert abs(avg - exp) < 0.02 and lo >= exp - 0.15 - 0.05 and hi <= exp + 0.15 + 0.05, (perf, lo, avg, hi)
+        # whole-number ratings: allow one rating point (up to ~0.11 stars at the top) of rounding
+        assert abs(avg - exp) < 0.02 and lo >= exp - 0.15 - 0.12 and hi <= exp + 0.15 + 0.12, (perf, lo, avg, hi)
         res[perf] = d
         print(f"decline phase, perf {perf:+.0f}: avg {avg:+.2f} stars, range {lo:+.2f}..{hi:+.2f}, "
               f"{sum(x > 0 for x in d) / len(d):.0%} improved, {sum(x == 0 for x in d) / len(d):.0%} unchanged")
@@ -113,7 +114,7 @@ def aging_check():
         P.develop(p, random.Random(i), 0, 0, 1.0)
         P.develop(dict(p, a=dict(p["a"])), random.Random(i), 0, 0, -1.0)
         pre.append(p["ovr"] - b)
-    print(f"age 28 (before decline): avg change {sum(pre) / len(pre) / P.STAR_RAW:+.2f} stars (performance ignored)")
+    print(f"age 28 (before decline): avg change {sum(pre) / len(pre) * 0.08:+.2f} stars (performance ignored)")
 
 
 if __name__ == "__main__":

@@ -236,6 +236,13 @@ def migrate(L):
         L.setdefault(k, v)
     if not L["energy"]:
         refresh_energy(L, full=True)
+    if L.get("rating_v") != 2:   # impact-based overall (skill groups): re-rate everyone, keep each growth gap
+        for p in L["players"].values():
+            gap = p["pot"] - p["ovr"]
+            P.refresh(p)
+            p["pot"] = max(p["ovr"], min(P.POT_MAX, p["ovr"] + gap))
+            P.refresh(p)
+        L["rating_v"] = 2
     # one 20-team table, no conferences or committee, 8-team playoff
     L["settings"]["conf"] = False
     L["settings"]["committee"] = False
@@ -1195,28 +1202,30 @@ def user_team_option(L, pid, exercise):
 
 
 def performance_scores(L):
-    """-1..1 per player: last regular season's production vs. players of a similar rating (minutes-weighted)."""
+    """-1..1 per player: last regular season's production vs. players of a similar rating AT HIS POSITION
+    (minutes-weighted). Position-relative, because bigs post bigger efficiency numbers than guards."""
     key = str(L["season"])
-    rows = []
+    by_pos = {}
     for p in L["players"].values():
         st = p["stats"].get(key)
         if not st or st["gp"] < 4 or st["min"] / st["gp"] < 8:
             continue
         pg = per_game(st)
-        rows.append((p["id"], p["ovr"], eff(pg) * 30 / max(8.0, pg["min"]), st["min"]))
-    if len(rows) < 10:
-        return {}
-    n = len(rows)
-    mx = sum(r[1] for r in rows) / n
-    my = sum(r[2] for r in rows) / n
-    sxx = sum((r[1] - mx) ** 2 for r in rows) or 1
-    slope = sum((r[1] - mx) * (r[2] - my) for r in rows) / sxx
-    resid = {r[0]: r[2] - (my + slope * (r[1] - mx)) for r in rows}
-    sd = (sum(v * v for v in resid.values()) / n) ** 0.5 or 1
+        by_pos.setdefault(p["pos"], []).append((p["id"], p["ovr"], eff(pg) * 30 / max(8.0, pg["min"]), st["min"]))
     out = {}
-    for pid, ovr, _, mins in rows:
-        weight = min(1.0, mins / 150)            # small samples count less
-        out[pid] = max(-1.0, min(1.0, resid[pid] / (1.5 * sd))) * weight
+    for rows in by_pos.values():
+        n = len(rows)
+        if n < 6:
+            continue
+        mx = sum(r[1] for r in rows) / n
+        my = sum(r[2] for r in rows) / n
+        sxx = sum((r[1] - mx) ** 2 for r in rows) or 1
+        slope = sum((r[1] - mx) * (r[2] - my) for r in rows) / sxx
+        resid = {r[0]: r[2] - (my + slope * (r[1] - mx)) for r in rows}
+        sd = (sum(v * v for v in resid.values()) / n) ** 0.5 or 1
+        for pid, ovr, _, mins in rows:
+            weight = min(1.0, mins / 150)            # small samples count less
+            out[pid] = max(-1.0, min(1.0, resid[pid] / (1.5 * sd))) * weight
     return out
 
 
@@ -1330,7 +1339,7 @@ def make_pick(L, pid, rng=None):
     slot["pid"] = p["id"]
     sc = FR.lvl(L, tid, "scouting")
     if sc and d["type"] == "rookie":
-        p["pot"] = min(97, p["pot"] + sc)
+        p["pot"] = min(P.POT_MAX, p["pot"] + sc)
         P.refresh(p)
     if d["type"] == "rookie" or p.get("contract") is None:
         p["contract"] = rookie_contract(slot["no"], slot["rd"]) if d["type"] == "rookie" else \
