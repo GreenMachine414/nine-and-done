@@ -26,7 +26,7 @@ function phaseHero() {
   if (L.derived.live) {
     return U.slab("Live game in progress", `<div class="row wrap" style="gap:20px"><div><div class="display" style="font-size:20px;font-weight:800">You stepped away from the sideline.</div>
       <div class="dim" style="margin-top:6px">Your game is paused right where you left it.</div></div><div class="sp"></div>
-      <button class="btn pri lg" data-go="#/live">Back to the bench →</button></div>`, { cls: "glow" });
+      <button class="btn pri lg" data-act="coach-live">Back to the bench →</button></div>`, { cls: "glow" });
   }
   if (L.phase === "regular" && L.allstar && L.allstar.s === L.season && L.allstar.status === "ready") {
     return U.slab("All-Star Weekend", `<div class="row wrap" style="gap:20px"><div><div class="display" style="font-size:22px;font-weight:800">★ The All-Star break is here</div>
@@ -48,7 +48,7 @@ function phaseHero() {
     <div><div class="matchup">${side(a)}<div class="vs">@</div>${side(h)}</div>${rb ? `<div class="row" style="justify-content:center;margin-top:14px">${rb}</div>` : ""}</div>
     <div class="col" style="gap:10px">
       <div class="label">${U.esc(h.arena)}</div>
-      <button class="btn pri lg" data-go="#/live" title="Coach it yourself: timeouts, subs, huddles, defensive reads, final plays">🎙 Coach live</button>
+      <button class="btn pri lg" data-act="coach-live" title="Coach it yourself: timeouts, subs, huddles, defensive reads, final plays">🎙 Coach live</button>
       <button class="btn lg" data-act="sim-day">Sim game</button>
       <div class="row wrap">${simBtns}</div>
     </div></div>`, { cls: "glow" });
@@ -162,6 +162,8 @@ ACT["sim-until"] = async (el) => {
   if (S.L.phase === "offseason") go("#/playoffs");
 };
 function render() { hooks.render(); }
+// the live page only starts a game when you actually ask for one (never from Back/Forward history)
+ACT["coach-live"] = () => { S.ui.liveIntent = true; go("#/live"); };
 
 // ================================================================== ROSTER
 const STRAT = [

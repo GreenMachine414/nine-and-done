@@ -172,6 +172,10 @@ export async function renderGame(root, gid, watch) {
 // ============================================================ live coaching
 export async function renderLive(root) {
   cancelAnimationFrame(raf);
+  // arriving here from browser history (not a Coach live click) must never tip off a new game
+  const intent = S.ui.liveIntent;
+  S.ui.liveIntent = false;
+  if (!intent && !S.L?.derived?.live) { location.replace("#/hub"); return; }
   root.innerHTML = `<div class="theater"><div class="loader">TIPPING OFF</div></div>`;
   let r;
   try { r = await api(`s/${S.sid}/live`, { cmd: "start" }); } catch (e) { U.toast(e.message, true); location.hash = "#/hub"; return; }
@@ -491,11 +495,12 @@ async function liveFinal(r) {
     <div class="col" style="gap:8px;margin-top:12px"><button class="btn pri lg" data-act="live-box" data-gid="${r.gid}">Final box score →</button><button class="btn ghost" data-act="live-hub">Back to hub</button></div>`));
 }
 ACT["live-box"] = (el) => finishToBox(el.dataset.gid);
-ACT["live-hub"] = async () => { G = null; await loadState(); location.hash = "#/hub"; hooks.render(); };
+// leaving a finished live game replaces the #/live history entry, so Back goes to the hub, never a new game
+ACT["live-hub"] = async () => { G = null; await loadState(); location.replace("#/hub"); };
 async function finishToBox(gid) {
   G = null;
   await loadState();
-  location.hash = `#/game/${gid}`;
+  location.replace(`#/game/${gid}`);
 }
 
 // ============================================================ shared animation
@@ -615,7 +620,7 @@ ACT["game-back"] = async () => {
     try { await api(`s/${S.sid}/live`, { cmd: "sim_rest" }); } catch (e) { /* already finished */ }
     G = null;
     await loadState();
-    location.hash = "#/hub";
+    location.replace("#/hub");
     return;
   }
   cancelAnimationFrame(raf);

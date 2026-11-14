@@ -38,12 +38,14 @@ export async function api(path, body, method) {
 }
 
 let busyEl = null;
-// slim progress bar along the top (no full-screen overlay); input is blocked while a server action runs
-function busy(on, label = "WORKING") {
+// the original full-screen loader (spinning ring + label). It appears the moment the action starts and runs
+// alongside the request; it never delays the request or the result.
+function busy(on, label = "SIMULATING") {
   if (on) {
+    if (busyEl) busyEl.remove();
     busyEl = document.createElement("div");
-    busyEl.className = "busybar";
-    busyEl.innerHTML = `<i></i><span>${label}</span>`;
+    busyEl.className = "busy";
+    busyEl.innerHTML = `<div class="loader">${label}</div>`;
     document.body.appendChild(busyEl);
   } else if (busyEl) { busyEl.remove(); busyEl = null; }
 }
@@ -74,10 +76,9 @@ export async function query(type, payload = {}) {
 }
 
 export async function act(type, payload = {}, { quiet = false, label, rerender = true } = {}) {
-  await bgChain;   // never race a pending background save
-  document.body.classList.add("waiting");
-  const t = setTimeout(() => busy(true, label), 120);
+  busy(true, label);   // shown the instant the action starts; it never waits on anything
   try {
+    await bgChain;     // never race a pending background save
     const r = await api(`s/${S.sid}/act`, { type, ...payload });
     S.L = r.state;
     applyTheme();
@@ -87,9 +88,7 @@ export async function act(type, payload = {}, { quiet = false, label, rerender =
     if (!quiet) toast(e.message, true);
     throw e;
   } finally {
-    clearTimeout(t);
     busy(false);
-    document.body.classList.remove("waiting");
   }
 }
 
