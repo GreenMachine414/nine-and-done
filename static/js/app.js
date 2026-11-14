@@ -111,6 +111,14 @@ function drawLanding() {
   const tsel = teams[NEW.team];
   const nameVal = document.getElementById("lg-name")?.value ?? NEW.name;
   NEW.name = nameVal;
+  // keep the scroll position across redraws (the setup panel scrolls inside .landing-right)
+  const panelScroll = document.querySelector(".landing-right")?.scrollTop || 0;
+  const pageScroll = window.scrollY;
+  requestAnimationFrame(() => {
+    const panel = document.querySelector(".landing-right");
+    if (panel) panel.scrollTop = panelScroll;
+    window.scrollTo(0, pageScroll);
+  });
   const P = NEW.teams <= 12 ? 4 : 8;
   const confNote = NEW.conf ? `${NEW.teams / 2} teams per conference (Atlas & Horizon)` : "One table, no conferences";
   const fmt = NEW.committee
