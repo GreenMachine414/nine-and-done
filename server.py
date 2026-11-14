@@ -51,8 +51,9 @@ def view(L):
             rep["cost"] = OF.scout_cost(L, p["id"])
             q.update({"fog": True, "scout": rep, "a": rep["known"], "tags": rep["tags"], "t": None, "tv": None,
                       "stars": round(sum(rep["ovr"]) / 2, 1), "pstars": round(sum(rep["pot"]) / 2, 1),
-                      "ovr": round(p["ovr"] + (hash((p["id"], rep["step"])) % 7 - 3) * (4 - rep["step"]) / 4),
-                      "pot": round(p["pot"])})
+                      # sort keys come only from the scouted ranges: nothing true leaks to the browser
+                      "ovr": round(sum(rep["ovr"]) / 2 * 20, 1), "pot": round(sum(rep["pot"]) / 2 * 20, 1),
+                      "clutch": None, "dur": None, "trait": None, "morale": None})
         if p["tid"] == -1:
             q["ask"] = P.contract_ask(p, LG.fa_mood(L, L["user"]))
         out["players"][k] = q

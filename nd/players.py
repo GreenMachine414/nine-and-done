@@ -276,9 +276,12 @@ def scout_report(p, step, scouting=0):
     Returns display-scale ranges for OVR/POT and only the attributes uncovered so far."""
     r = random.Random(p["id"] * 7919 + 17)
     order = list(ATTRS)
-    r.shuffle(order)
-    f_o, f_p = r.uniform(0.15, 0.85), r.uniform(0.15, 0.85)
+    r.shuffle(order)            # which attributes get uncovered first (fixed per player)
     step = max(0, min(SCOUT_MAX_STEP, step))
+    # Where the true value sits inside each range is uniformly random, edges included, and re-drawn at every
+    # scouting step, so successive reports can't be compared to back out the exact rating.
+    rs = random.Random(p["id"] * 104729 + step * 7907 + 3)
+    f_o, f_p = rs.random(), rs.random()
     n_known = min(len(ATTRS), 4 + scouting + 3 * step)
     known = {k: p["a"][k] for k in order[:n_known]}
     shrink = 1 - 0.1 * scouting
