@@ -22,6 +22,8 @@ STAT_KEYS = ["pts", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "orb", "drb", "ast
 DEFAULT_STRAT = {"pace": "normal", "focus": "balanced", "star": "normal", "defense": "normal", "rotation": "standard"}
 PACE_SECS = {"slow": 17.2, "normal": 15.2, "fast": 13.2}
 DEPTH = {"tight": 8, "standard": 10, "deep": 11}
+AST_RATE = 1.07   # share of made shots that are assisted (multiplier)
+AST_FOCUS = 1.6   # how strongly assists go to players with a high passing tendency (was 1.0)
 SHOT_KNEE = 78     # shooter ratings above this...
 SHOT_TOP = 0.75    # ...count 75% per point toward make chances
 # starters' planned share of game time, best starter first (about 35 down to 28 minutes). A starter ahead of his
@@ -604,11 +606,11 @@ class Game:
             mates = [g for g in O if g is not shooter]
             team_pass = sum(g.r("pass") for g in mates) / 4
             p_ast = base * (0.78 + (team_pass - 58) / 110) * (1 - (shooter.a["hand"] - 60) / 260)
-            p_ast *= 1 + (OT.chem - 72) / 400
+            p_ast *= (1 + (OT.chem - 72) / 400) * AST_RATE
             if mode == "trans":
                 p_ast *= 1.08
             if rng.random() < clamp(p_ast, 0.05, 0.95):
-                passer = wchoice(rng, mates, [g.r("pass") ** 2.4 * (g.t["pass"] / 50) for g in mates])
+                passer = wchoice(rng, mates, [g.r("pass") ** 2.4 * (g.t["pass"] / 50) ** AST_FOCUS for g in mates])
 
         # ---- make probability
         S, X = shooter, defender
