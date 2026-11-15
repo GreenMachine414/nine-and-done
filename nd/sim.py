@@ -22,6 +22,8 @@ STAT_KEYS = ["pts", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "orb", "drb", "ast
 DEFAULT_STRAT = {"pace": "normal", "focus": "balanced", "star": "normal", "defense": "normal", "rotation": "standard"}
 PACE_SECS = {"slow": 17.2, "normal": 15.2, "fast": 13.2}
 DEPTH = {"tight": 8, "standard": 10, "deep": 11}
+SHOT_KNEE = 78     # shooter ratings above this...
+SHOT_TOP = 0.75    # ...count 75% per point toward make chances
 # starters' planned share of game time, best starter first (about 35 down to 28 minutes). A starter ahead of his
 # plan is next to come out, except in a close 4th quarter or when it's down to the wire.
 STARTER_PACE = [0.72, 0.67, 0.63, 0.60, 0.57]
@@ -95,6 +97,12 @@ class GP:
 
     def r(self, k):
         return self.a[k] * self.fm
+
+    def sr(self, k):
+        """Shooting rating used for make chances: above SHOT_KNEE each extra point counts a little less, so elite
+        scorers stay great without being unrealistically efficient."""
+        v = self.r(k)
+        return v if v <= SHOT_KNEE else SHOT_KNEE + (v - SHOT_KNEE) * SHOT_TOP
 
     def avail(self):
         return self.fouls < 6 and self.injured is None
@@ -605,18 +613,18 @@ class Game:
         # ---- make probability
         S, X = shooter, defender
         if stype == "rim":
-            p = 0.565 + (S.r("ins") - 65) * 0.0045 + (S.r("ath") - 65) * 0.0015 \
+            p = 0.565 + (S.sr("ins") - 65) * 0.0045 + (S.sr("ath") - 65) * 0.0015 \
                 - (X.r("intd") - 65) * 0.0020 - (rim_prot.r("blk") - 65) * 0.0012
             if mode == "trans":
                 p += 0.07
             if putback:
                 p += 0.03
         elif stype == "post":
-            p = 0.455 + (S.r("post") - 65) * 0.0045 + (S.r("ins") - 65) * 0.001 - (X.r("intd") - 65) * 0.0035
+            p = 0.455 + (S.sr("post") - 65) * 0.0045 + (S.sr("ins") - 65) * 0.001 - (X.r("intd") - 65) * 0.0035
         elif stype == "mid":
-            p = 0.39 + (S.r("mid") - 65) * 0.0045 - (X.r("perd") - 65) * 0.0022
+            p = 0.39 + (S.sr("mid") - 65) * 0.0045 - (X.r("perd") - 65) * 0.0022
         elif stype == "three":
-            p = 0.314 + (S.r("three") - 65) * 0.0042 - (X.r("perd") - 65) * 0.0016
+            p = 0.314 + (S.sr("three") - 65) * 0.0042 - (X.r("perd") - 65) * 0.0016
         else:
             p = 0.11
         if stype != "heave":
