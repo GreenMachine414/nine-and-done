@@ -22,6 +22,11 @@ STAT_KEYS = ["pts", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "orb", "drb", "ast
 DEFAULT_STRAT = {"pace": "normal", "focus": "balanced", "star": "normal", "defense": "normal", "rotation": "standard"}
 PACE_SECS = {"slow": 17.2, "normal": 15.2, "fast": 13.2}
 DEPTH = {"tight": 8, "standard": 10, "deep": 11}
+# starters' planned share of game time, best starter first (about 35 down to 28 minutes). A starter ahead of his
+# plan is next to come out, except in a close 4th quarter or when it's down to the wire.
+STARTER_PACE = [0.72, 0.67, 0.63, 0.60, 0.57]
+MIN_CAP = 37 * 60          # soft minutes cap (seconds) outside crunch time and overtime: 40+ is for close games
+MIN_CAP_PO = 39 * 60       # a little more rope in the playoffs
 ZONES = ["three", "mid", "rim", "post"]
 ZONE_LABEL = {"three": "3PT", "mid": "Mid-range", "rim": "At the rim", "post": "Post-ups"}
 METER_BONUS = {"perfect": 0.16, "good": 0.07, "ok": 0.0, "miss": -0.13}
@@ -250,16 +255,23 @@ class Game:
                 if g.slot < 5:
                     self.swap(team, g, deep.pop(0))
             return
+        cap = MIN_CAP_PO if self.playoff else MIN_CAP
+        srank = {g.id: i for i, g in enumerate(sorted((g for g in team.players if g.slot < 5), key=lambda g: -g.ovr))}
+        # the cap only lifts when it's truly down to the wire: within 6 in the last 4 minutes, or overtime
+        wire = self.q > 4 or (self.q == 4 and self.clock <= 240 and abs(self.score[0] - self.score[1]) <= 6)
         for g in sorted(team.on, key=lambda g: g.energy):
             forced = not g.avail()
             if g.hold_in >= now and not forced:
                 continue
             thresh = 35 if crunch else (60 if g.slot < 5 else 67 if g.slot < 8 else 72)
-            trouble = self.foul_trouble(g) and not crunch
+            close4 = self.q == 4 and abs(self.score[0] - self.score[1]) <= 10   # a close 4th: ride your starters
+            ahead = (g.slot < 5 and g.sec > now * STARTER_PACE[min(4, srank.get(g.id, 4))] + 150
+                     and self.q <= 4 and not close4)
+            trouble = (self.foul_trouble(g) and not crunch) or ((g.sec >= cap or ahead) and not wire)
             if not (forced or trouble or g.energy < thresh):
                 continue
             cands = [b for b in bench if b.slot < team.depth or forced or len(bench) < 3]
-            fresh = [b for b in cands if b.energy >= 80 and not self.foul_trouble(b)]
+            fresh = [b for b in cands if b.energy >= 80 and not self.foul_trouble(b) and (wire or b.sec < cap)]
             pool = fresh or (cands if (forced or trouble) else [])
             if not pool:
                 if forced:   # nobody legal on the bench: bring anyone healthy back
@@ -274,7 +286,10 @@ class Game:
             if g.avail():
                 bench.append(g)
         for b in sorted(bench, key=lambda b: b.slot):
-            if b.on or b.energy < (55 if crunch else 88) or self.foul_trouble(b) or b.slot >= team.depth:
+            back = 55 if crunch else 88
+            if b.on or b.energy < back or self.foul_trouble(b) or b.slot >= team.depth:
+                continue
+            if not wire and b.sec >= cap:        # he's done for now unless it comes down to the wire
                 continue
             worse = [g for g in team.on if g.slot > b.slot and abs(g.pi - b.pi) <= 1 and g.hold_in < now]
             if crunch:
@@ -534,7 +549,7 @@ class Game:
         elif putback:
             shooter = putback
         else:
-            star_mult = {"share": 0.8, "normal": 1.0, "heliocentric": 1.45}.get(so["star"], 1.0)
+            star_mult = {"share": 0.8, "normal": 1.0, "heliocentric": 1.3}.get(so["star"], 1.0)
             ws = []
             for g in O:
                 w = (max(6, g.t["use"]) / 50.0) ** 0.75 * (g.ovr / 65.0) ** 1.12 * (0.6 + 0.4 * g.fat())
